@@ -125,8 +125,14 @@ var chartInstances = {};
 })();
 
 /* SECTION: resize */
-window.addEventListener('resize', function() {
-	Object.keys(chartInstances).forEach(function(k) {
-		if (chartInstances[k] && chartInstances[k].resize) chartInstances[k].resize();
+function resizeDashboardCharts() {
+	Object.keys(chartInstances).forEach(function(chartId) {
+		if (chartInstances[chartId] && chartInstances[chartId].resize) chartInstances[chartId].resize();
 	});
+}
+
+window.addEventListener('resize', resizeDashboardCharts);
+var dashboardResizeObserver = new ResizeObserver(resizeDashboardCharts);
+Object.keys(chartInstances).forEach(function(chartId) {
+	dashboardResizeObserver.observe(chartInstances[chartId].getDom());
 });

@@ -37,6 +37,10 @@
 		overflow: hidden;
 	}
 
+	.sidebar-collapsed .main-content {
+		width: 100%;
+	}
+
 	/* SECTION: topbar */
 	.topbar {
 		height: 52px;
