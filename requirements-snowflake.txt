@@ -1,0 +1,4 @@
+django-snowflake==3.2.*
+snowflake-connector-python>=4.0,<5
+numpy>=1.26,<2
+pandas>=2.2,<3

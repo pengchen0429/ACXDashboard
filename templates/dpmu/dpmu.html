@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}DPMU 质量监控大屏 - ACX智慧工厂{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="{% static 'css/dpmu.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="dpmu-page">
+<div class="page-wrapper">
+
+  <!-- 顶部标题栏 -->
+  <div class="dash-header">
+    <div>
+      <div class="dash-title">DPMU 质量监控大屏</div>
+      <div class="dash-sub">DEFECTS PER MILLION UNITS · 织造 / 染色全流程质量监控</div>
+    </div>
+    <div class="dash-meta">
+      <span class="demo-badge">示例数据 · 模板演示</span>
+      <span class="live-dot"></span><span class="live-clock" id="liveClock">--:--:--</span><br>
+      <span class="data-cutoff">数据截至 2026-10-19</span>
+    </div>
+  </div>
+
+  <!-- Tab 按钮栏 -->
+  <div class="tab-bar">
+    <button class="tab-btn active" type="button" data-tab="overview" aria-pressed="true">总 览</button>
+    <button class="tab-btn" type="button" data-tab="weaving" aria-pressed="false">织 造</button>
+    <button class="tab-btn" type="button" data-tab="dyeing" aria-pressed="false">染 色</button>
+  </div>
+
+  <!-- 筛选栏 -->
+  <div class="filter-bar">
+    <div class="filter-group">
+      <label for="dpmuStartTime">开始时间</label>
+      <input type="datetime-local" id="dpmuStartTime" name="start_time" step="60" value="2026-01-01T00:00" />
+    </div>
+    <span class="filter-sep">—</span>
+    <div class="filter-group">
+      <label for="dpmuEndTime">结束时间</label>
+      <input type="datetime-local" id="dpmuEndTime" name="end_time" step="60" value="2026-10-19T23:59" />
+    </div>
+    <div class="filter-group">
+      <label>疵点类型</label>
+      <select>
+        <option>全部</option>
+        <option>色差</option><option>断经</option><option>断纬</option>
+        <option>色斑</option><option>跳纱</option><option>油污</option>
+        <option>缩水不良</option><option>起毛</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>产品名称</label>
+      <select>
+        <option>全部</option>
+        <option>产品A-高强度织带</option>
+        <option>产品B-弹性松紧带</option>
+        <option>产品C-提花装饰带</option>
+        <option>产品D-工业绳带</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>带型</label>
+      <select>
+        <option>全部</option>
+        <option>平带</option><option>松紧带</option>
+        <option>织带</option><option>绳带</option><option>提花带</option>
+      </select>
+    </div>
+    <button class="filter-btn" type="button" id="dpmuQuery">查 询</button>
+  </div>
+
+  <!-- 图表网格 -->
+  <div class="chart-grid" id="chartGrid">
+    <div class="card"><div class="chart-container" id="chart1" data-chart="true"></div></div>
+    <div class="card"><div class="chart-container" id="chart2" data-chart="true"></div></div>
+    <div class="card"><div class="chart-container" id="chart3" data-chart="true"></div></div>
+    <div class="card"><div class="chart-container" id="chart4" data-chart="true"></div></div>
+    <div class="card"><div class="chart-container" id="chart5" data-chart="true"></div></div>
+    <div class="card"><div class="chart-container" id="chart6" data-chart="true"></div></div>
+    <div class="card"><div class="chart-container" id="chart7" data-chart="true"></div></div>
+    <div class="card"><div class="chart-container" id="chart8" data-chart="true"></div></div>
+    <div class="card"><div class="chart-container" id="chart9" data-chart="true"></div></div>
+  </div>
+
+  <div class="footer-note">※ 本页所有数值均为演示用示例数据，非真实生产数据；筛选功能需接入后端数据源后生效</div>
+</div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/echarts.min.js' %}"></script>
+<script src="{% static 'js/dpmu.js' %}"></script>
+{% endblock %}

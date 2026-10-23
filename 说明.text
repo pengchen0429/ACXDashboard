@@ -1,0 +1,6 @@
+python manage.py runserver 127.0.0.1:8001
+
+apps
+dashboard -- 首页大屏显示
+analytics -- 质量统计
+briefing -- 早会模块

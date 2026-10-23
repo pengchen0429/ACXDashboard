@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}生产早会 - ACX智慧工厂{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="{% static 'css/briefing.css' %}">
+<script src="{% static 'js/echarts.min.js' %}"></script>
+<script>
+!(function(j,a,g){j.__itrace_conf = {bid: 'f43basl8-6nqu7l3w',rel: '0.0.1', spa: true, uid: '', plugins:['jserror','interface','perf','resource','flow','blank']};var b = a.createElement("script");var d = a.getElementsByTagName("script")[0];b.type = "text/javascript";b.crossorigin = true;b.async = true;b.onload = function(){j.__itrace && j.__itrace.setReady()};d.parentNode.insertBefore(b,d);b.src = g})(window, document, "https://g.alicdn.com/woodpeckerx/itrace-next/itrace.iife.js")
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="page-wrapper briefing-page">
+
+  <!-- 顶部标题栏 -->
+  <div class="dash-header">
+    <div>
+      <div class="dash-title">ACX早会 SQDCM 运营监控大屏</div>
+      <div class="dash-sub">SAFETY 安全 · QUALITY 质量 · DELIVERY 交付 · COST 成本 · MORALE 士气</div>
+    </div>
+    <div class="dash-meta">
+      <span class="demo-badge">示例数据 · 模板演示</span><br>
+      统计周期：2025-11 至 2026-10 · 数据截至 2026-10-15
+    </div>
+  </div>
+
+  <!-- KPI 卡片行 -->
+  <div class="kpi-row">
+    <div class="kpi-card" style="--kpi-color:#34d97e">
+      <div class="kpi-tag"><span class="kpi-letter">S</span>连续安全生产</div>
+      <div class="kpi-value">187<span class="unit">天</span></div>
+      <div class="kpi-delta flat">本月安全事故 1 起（轻微）</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:#409cff">
+      <div class="kpi-tag"><span class="kpi-letter">Q</span>一次合格率</div>
+      <div class="kpi-value">97.4<span class="unit">%</span></div>
+      <div class="kpi-delta up">▲ 0.3 pct · 高于目标 96.5%</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:#fac858">
+      <div class="kpi-tag"><span class="kpi-letter">D</span>准时交付率</div>
+      <div class="kpi-value">98.6<span class="unit">%</span></div>
+      <div class="kpi-delta up">▲ 0.4 pct · 高于目标 98%</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:#ff9f43">
+      <div class="kpi-tag"><span class="kpi-letter">C</span>本月制造成本</div>
+      <div class="kpi-value">800<span class="unit">万元</span></div>
+      <div class="kpi-delta up">▼ 3.2% · 环比下降</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:#b28dff">
+      <div class="kpi-tag"><span class="kpi-letter">M</span>员工改善提案</div>
+      <div class="kpi-value">126<span class="unit">件</span></div>
+      <div class="kpi-delta up">▲ 12 件 · 环比上升</div>
+    </div>
+  </div>
+
+  <!-- 图表网格 -->
+  <div class="chart-grid">
+    <div class="card"><div class="chart-container" id="chartSafety" data-chart="true"></div></div>
+    <div class="card"><div class="chart-container" id="chartPareto" data-chart="true"></div></div>
+    <div class="card"><div class="chart-container" id="chartFpy" data-chart="true"></div></div>
+    <div class="card"><div class="chart-container" id="chartDelivery" data-chart="true"></div></div>
+    <div class="card"><div class="chart-container" id="chartCost" data-chart="true"></div></div>
+    <div class="card"><div class="chart-container" id="chartRadar" data-chart="true"></div></div>
+  </div>
+
+  <div class="footer-note">※ 本页所有数值均为演示用示例数据，非真实生产数据；接入真实数据时直接替换页面内 data 对象即可</div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/briefing.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}运营总览 - ACX智慧工厂{% endblock %}
+
+{% block head_extra %}
+<script src="{% static 'js/echarts.min.js' %}"></script>
+<link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
+{% endblock %}
+
+{% block content %}
+<!-- SECTION: topbar -->
+<div class="topbar">
+  <div class="topbar-left">
+    <span class="page-title">运营总览</span>
+    <span class="breadcrumb">首页 / 运营总览</span>
+  </div>
+  <div class="topbar-right">
+    <span><span class="status-dot"></span>系统正常</span>
+    <span id="topClock"></span>
+  </div>
+</div>
+
+<!-- SECTION: page-container -->
+<div class="page-container">
+
+  <!-- dashboard-kpi -->
+  <div class="card-grid cols-4" style="margin-bottom:20px;">
+    <div class="kpi-card">
+      <div class="kpi-label">今日产量</div>
+      <div class="kpi-value">12,846 <span class="kpi-unit">件</span></div>
+      <div class="kpi-sub">较昨日 <span class="up">↑ 3.2%</span></div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">设备 OEE</div>
+      <div class="kpi-value">87.6<span class="kpi-unit">%</span></div>
+      <div class="kpi-sub">目标 90% · <span class="down">差 2.4%</span></div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">质量合格率</div>
+      <div class="kpi-value">98.3<span class="kpi-unit">%</span></div>
+      <div class="kpi-sub">较上周 <span class="up">↑ 0.5%</span></div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">能耗指数</div>
+      <div class="kpi-value">1,247<span class="kpi-unit">kWh</span></div>
+      <div class="kpi-sub">较昨日 <span class="up">↓ 1.8%</span></div>
+    </div>
+  </div>
+
+  <!-- dashboard-charts row 1 -->
+  <div class="card-grid cols-2">
+    <div class="card">
+      <div class="card-title">近7日生产趋势</div>
+      <div class="chart-box" id="dashTrend" data-chart="true"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">各产线今日产量</div>
+      <div class="chart-box" id="dashLines" data-chart="true"></div>
+    </div>
+  </div>
+
+  <!-- dashboard-charts row 2 -->
+  <div class="card-grid cols-3" style="margin-top:16px;">
+    <div class="card">
+      <div class="card-title">设备运行状态</div>
+      <div class="chart-box" id="dashEquip" data-chart="true"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">质量缺陷分布</div>
+      <div class="chart-box" id="dashQuality" data-chart="true"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">实时告警</div>
+      <ul class="alarm-list" id="dashAlarms"></ul>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/dashboard.js' %}"></script>
+{% endblock %}

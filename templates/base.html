@@ -1,0 +1,115 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}ACX智慧工厂运营系统{% endblock %}</title>
+  <link rel="icon" href="{% static 'favicon/autoliv.ico' %}" type="image/x-icon">
+  <link rel="stylesheet" href="{% static 'css/style.css' %}">
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+  <button class="menu-toggle" id="menuToggle" type="button" aria-label="打开导航菜单" aria-expanded="false">☰</button>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+  <button class="sidebar-visibility-toggle" id="sidebarVisibilityToggle" type="button" aria-label="隐藏主导航" aria-controls="sidebar" aria-expanded="true">
+    <span class="sidebar-visibility-icon" aria-hidden="true">‹</span>
+    <span class="sidebar-visibility-label">隐藏导航</span>
+  </button>
+  <aside class="sidebar" id="sidebar" aria-label="主导航">
+    <div class="sidebar-header">
+      <div class="logo-icon">⚙</div>
+      <h2>ACX智慧工厂</h2>
+    </div>
+    <nav class="sidebar-nav" id="sidebarNav" aria-label="功能菜单">
+      <a class="nav-item{% if request.resolver_match.url_name == 'dashboard' %} active{% endif %}" href="{% url 'dashboard' %}" data-page="dashboard"{% if request.resolver_match.url_name == 'dashboard' %} aria-current="page"{% endif %}>
+        <span class="nav-icon">📊</span>
+        <span class="nav-label">运营总览</span>
+      </a>
+      <details class="nav-group" open>
+        <summary class="nav-item">
+          <span class="nav-icon">🏭</span>
+          <span class="nav-label">MA生产</span>
+          <span class="nav-chevron" aria-hidden="true">&#8250;</span>
+        </summary>
+        <div class="nav-submenu">
+          <a class="nav-item{% if request.resolver_match.url_name == 'briefing' %} active{% endif %}" href="{% url 'briefing' %}" data-page="briefing"{% if request.resolver_match.url_name == 'briefing' %} aria-current="page"{% endif %}>
+            <span class="nav-icon">🏭</span>
+            <span class="nav-label">生产早会</span>
+          </a>
+          <a class="nav-item{% if request.resolver_match.url_name == 'equipment' %} active{% endif %}" href="{% url 'equipment' %}" data-page="equipment"{% if request.resolver_match.url_name == 'equipment' %} aria-current="page"{% endif %}>
+            <span class="nav-icon">⚙️</span>
+            <span class="nav-label">设备管理</span>
+          </a>
+          <button class="nav-item" type="button" data-page="quality">
+            <span class="nav-icon">✅</span>
+            <span class="nav-label">质量管控</span>
+          </button>
+          <button class="nav-item" type="button" data-page="alerts">
+            <span class="nav-icon">🔔</span>
+            <span class="nav-label">告警中心</span>
+          </button>
+          <button class="nav-item" type="button" data-page="energy">
+            <span class="nav-icon">⚡</span>
+            <span class="nav-label">能耗管理</span>
+          </button>
+        </div>
+      </details>
+      <details class="nav-group">
+        <summary class="nav-item">
+          <span class="nav-icon">🛡️</span>
+          <span class="nav-label">SHEEF安全</span>
+          <span class="nav-chevron" aria-hidden="true">&#8250;</span>
+        </summary>
+        <div class="nav-submenu">
+          <button class="nav-item" type="button" data-page="safety1">
+            <span class="nav-icon">🦺</span>
+            <span class="nav-label">安全1</span>
+          </button>
+          <button class="nav-item" type="button" data-page="safety2">
+            <span class="nav-icon">🦺</span>
+            <span class="nav-label">安全2</span>
+          </button>
+        </div>
+      </details>
+      <details class="nav-group"{% if request.resolver_match.url_name == 'analytics' or request.resolver_match.url_name == 'dpmu' %} open{% endif %}>
+        <summary class="nav-item">
+          <span class="nav-icon">✅</span>
+          <span class="nav-label">QA质量</span>
+          <span class="nav-chevron" aria-hidden="true">&#8250;</span>
+        </summary>
+        <div class="nav-submenu">
+          <a class="nav-item{% if request.resolver_match.url_name == 'analytics' %} active{% endif %}" href="{% url 'analytics' %}" data-page="analytics"{% if request.resolver_match.url_name == 'analytics' %} aria-current="page"{% endif %}>
+            <span class="nav-icon">📊</span>
+            <span class="nav-label">质检统计</span>
+          </a>
+          <a class="nav-item{% if request.resolver_match.url_name == 'dpmu' %} active{% endif %}" href="{% url 'dpmu' %}" data-page="dpmu"{% if request.resolver_match.url_name == 'dpmu' %} aria-current="page"{% endif %}>
+            <span class="nav-icon">&#128200;</span>
+            <span class="nav-label">DPMU</span>
+          </a>
+        </div>
+        
+      </details>
+      {% comment %} <details class="nav-group">
+        <summary class="nav-item">
+          <span class="nav-icon">🚚</span>
+          <span class="nav-label">LOG物流</span>
+          <span class="nav-chevron" aria-hidden="true">&#8250;</span>
+        </summary>
+        <div class="nav-submenu">
+          <button class="nav-item" type="button" data-page="logistics">
+            <span class="nav-icon">📦</span>
+            <span class="nav-label">物流流转</span>
+          </button>
+        </div>
+      </details> {% endcomment %}
+    </nav>
+    <div class="sidebar-footer"><div>v0.1.0</div></div>
+  </aside>
+  <main class="main-content">
+    {% block content %}{% endblock %}
+  </main>
+  <script src="{% static 'js/base.js' %}"></script>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

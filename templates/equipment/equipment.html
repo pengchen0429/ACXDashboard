@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}设备管理与监控大屏 - ACX智慧工厂{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="{% static 'css/equipment.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="equipment-page">
+
+  <!-- 顶部标题栏 -->
+  <div class="dash-header">
+    <div>
+      <div class="dash-title">设备管理与实时监控大屏</div>
+      <div class="dash-sub">EQUIPMENT MANAGEMENT &amp; MONITORING · 全厂设备运行状态全景视图</div>
+    </div>
+    <div class="dash-meta">
+      <span class="demo-badge">示例数据 · 模板演示</span>
+      <span class="live-dot"></span><span class="live-clock" id="liveClock">--:--:--</span><br>
+      <span class="data-summary">数据截至 2026-10-16 · 共 128 台设备</span>
+    </div>
+  </div>
+
+  <!-- KPI 卡片行 -->
+  <div class="kpi-row">
+    <div class="kpi-card kpi-total">
+      <div class="kpi-tag"><span class="kpi-icon">Σ</span>设备总数</div>
+      <div class="kpi-value">128<span class="unit">台</span></div>
+      <div class="kpi-delta flat">本月新增 2 台</div>
+    </div>
+    <div class="kpi-card kpi-running">
+      <div class="kpi-tag"><span class="kpi-icon">▶</span>运行中</div>
+      <div class="kpi-value">96<span class="unit">台 · 75%</span></div>
+      <div class="kpi-delta up">运行率正常</div>
+    </div>
+    <div class="kpi-card kpi-standby">
+      <div class="kpi-tag"><span class="kpi-icon">⏸</span>维保/待机</div>
+      <div class="kpi-value">20<span class="unit">台</span></div>
+      <div class="kpi-delta flat">维保 8 · 待机 12</div>
+    </div>
+    <div class="kpi-card kpi-fault">
+      <div class="kpi-tag"><span class="kpi-icon">!</span>故障停机</div>
+      <div class="kpi-value">12<span class="unit">台 · 9.4%</span></div>
+      <div class="kpi-delta down">较上月 ▲ 2 台</div>
+    </div>
+    <div class="kpi-card kpi-oee">
+      <div class="kpi-tag"><span class="kpi-icon">◎</span>OEE 综合效率</div>
+      <div class="kpi-value">85.3<span class="unit">%</span></div>
+      <div class="kpi-delta up">▲ 0.8 pct · 高于目标 85%</div>
+    </div>
+  </div>
+
+  <!-- 图表网格 -->
+  <div class="chart-grid">
+    <div class="card"><div class="chart-container" id="chartStatus" data-chart="true"></div></div>
+    <div class="card"><div class="chart-container" id="chartOEE" data-chart="true"></div></div>
+    <div class="card"><div class="chart-container" id="chartPareto" data-chart="true"></div></div>
+    <div class="card"><div class="chart-container" id="chartMTBF" data-chart="true"></div></div>
+    <div class="card"><div class="chart-container" id="chartEnergy" data-chart="true"></div></div>
+    <div class="card"><div class="chart-container" id="chartMaint" data-chart="true"></div></div>
+  </div>
+
+  <div class="footer-note">※ 本页所有数值均为演示用示例数据，非真实生产数据；接入 MES/EAM 真实数据时替换页面内 data 对象即可</div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/echarts.min.js' %}"></script>
+<script src="{% static 'js/equipment.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}质检统计 - ACX智慧工厂{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="{% static 'css/analytics.css' %}">
+<script src="{% static 'js/echarts.min.js' %}"></script>
+{% endblock %}
+
+{% block content %}
+<div class="analytics-page" data-statistics-url="{% url 'analytics-statistics' %}">
+  <!-- Header -->
+  <div class="dashboard-header">
+    <h1>质检统计 Dashboard</h1>
+    <div class="date-filter">
+      <div class="date-range" role="group" aria-label="统计时间范围">
+        <label class="date-field" for="analyticsStartDate">
+          <span>开始时间</span>
+          <input type="datetime-local" step="60" id="analyticsStartDate" name="start_date" required aria-describedby="analyticsDateError">
+        </label>
+        <span class="date-separator" aria-hidden="true">至</span>
+        <label class="date-field" for="analyticsEndDate">
+          <span>结束时间</span>
+          <input type="datetime-local" step="60" id="analyticsEndDate" name="end_date" required aria-describedby="analyticsDateError">
+        </label>
+      </div>
+      <button type="button" class="trend-query" id="analyticsQuery">查询</button>
+      <p class="date-error" id="analyticsDateError" role="status" hidden></p>
+    </div>
+  </div>
+
+  <!-- Row 1: Daily Trend (full width) -->
+  <div class="chart-row row-1" style="margin-bottom:20px;">
+    <div class="card">
+      <div class="card-title">每日报废数量趋势(来源自质检时间及报废数量，单位：米)</div>
+      <p class="trend-status" id="analyticsTrendStatus" role="status" hidden></p>
+      <div class="chart-container" id="chart-daily-trend" data-chart="true" aria-label="每日报废数量趋势，单位：米"></div>
+    </div>
+  </div>
+
+  <!-- Row 2: Defect Category Donut + Daily Category Stacked Area -->
+  <div class="chart-row row-2-1" style="margin-bottom:20px;">
+    <div class="card">
+      <div class="card-title">每日疵点分类报废数量趋势(单位：米)</div>
+      <div class="chart-container" id="chart-daily-cat-trend" data-chart="true"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">疵点分类报废数量占比</div>
+      <div class="chart-container" id="chart-defect-cat" data-chart="true"></div>
+    </div>
+  </div>
+
+  <!-- Row 3: Defect TOP10 + Team Distribution -->
+  <div class="chart-row row-2" style="margin-bottom:20px;">
+    <div class="card">
+      <div class="card-title">疵点名称报废数量 TOP 10(单位：米)</div>
+      <div class="chart-container" id="chart-defect-top10" data-chart="true"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">班组报废数量分布(单位：米)</div>
+      <div class="chart-container" id="chart-team" data-chart="true"></div>
+    </div>
+  </div>
+
+  <!-- Row 4: Device TOP10 + Inspector TOP10 -->
+  <div class="chart-row row-2" style="margin-bottom:20px;">
+    <div class="card">
+      <div class="card-title">设备报废数量 TOP 10(单位：米)</div>
+      <div class="chart-container" id="chart-device" data-chart="true"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">检验员报废数量 TOP 10(单位：米)</div>
+      <div class="chart-container" id="chart-inspector" data-chart="true"></div>
+    </div>
+  </div>
+
+  <!-- Row 5: Barcode Type + Scrap Category + Product TOP10 -->
+  <div class="chart-row row-3" style="margin-bottom:20px;">
+    <div class="card">
+      <div class="card-title">条码类型报废数量分布(单位：米)</div>
+      <div class="chart-container-sm" id="chart-barcode" data-chart="true"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">报废分类数量分布(单位：米)</div>
+      <div class="chart-container-sm" id="chart-scrap-cat" data-chart="true"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">产品报废数量 TOP 10(单位：米)</div>
+      <div class="chart-container-sm" id="chart-product" data-chart="true"></div>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/analytics.js' %}"></script>
+{% endblock %}
