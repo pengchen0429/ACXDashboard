@@ -27,7 +27,7 @@ SECRET_KEY = 'django-insecure-mpj&)e=nc)pin*k6_rn7mj_yz@gsp=(*jk3o*h1hyzgdt()##&
 DEBUG = True
 
 ALLOWED_HOSTS = ['*']
-
+# 测试使用，允许所有主机访问
 
 # Application definition
 
