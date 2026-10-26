@@ -1,3 +1,50 @@
+# 页面访问权限
+
+设备管理和 DPMU 使用 Django 原生权限。权限分配给 Group，用户通过所属 Group 获取权限；视图和导航使用相同的权限标识，不按组名写死访问判断。
+
+| 页面 | 权限标识 | 初始授权组 |
+| --- | --- | --- |
+| 设备管理 `/equipment/` | `dashboard.view_equipment` | `manager`、`admin` |
+| DPMU `/dpmu/` | `dashboard.view_dpmu` | `manager`、`admin` |
+
+- 执行 `python manage.py migrate dashboard` 初始化权限和授权。迁移只增加 Django 权限元数据及 Group 关联，不创建业务表，不删除现有用户、组或权限；回滚不会删除授权元数据。
+- `apps/dashboard/models.py` 的 `PageAccess.Meta.permissions` 是页面权限目录。`managed=False` 表示该模型只承载权限定义，不创建对应数据表，也不需要注册到后台。
+- 在 Django 后台进入“认证和授权 → 组 → 目标组 → 权限”，筛选 `Page access`，添加或移除 `Can view equipment page`、`Can view DPMU page` 后保存。
+- 初始 `visitor`、`user` 没有这两项权限。匿名用户看不到入口，直接访问跳转 `/login/?next=...`；已登录但无权限返回 HTTP 403。有权限的用户可以访问页面并看到入口，其余页面保持原规则。
+- 多组权限及用户直接权限取并集，不存在“拒绝组”覆盖允许组的规则。需要严格按组管理时，不要向用户单独授予页面权限。
+- 已启用的超级管理员默认拥有全部权限。名为 `admin` 的 Group 不等同于超级管理员，也不会自动授予 `is_staff` 后台资格；仅有 `is_staff` 也不代表具有业务页面权限。
+- 登录保留 Django 的安全 `next` 跳转。默认跳转为管理后台时，非 `is_staff` 用户改为运营首页，后台人员仍使用 `LOGIN_REDIRECT_URL` 配置。
+- 设备管理与 DPMU 当前没有独立 HTTP 数据接口；未来新增 API、导出接口时，必须应用相应页面权限或单独定义操作权限，不能仅隐藏按钮。
+
+## 后续新增受控页面
+
+1. 在 `PageAccess.Meta.permissions` 增加一项，例如 `('view_energy', 'Can view energy page')`，运行 `python manage.py makemigrations dashboard`、`python manage.py migrate dashboard`。
+2. 在新页面视图上依次使用 `@login_required(login_url='login')` 和 `@permission_required('dashboard.view_energy', raise_exception=True)`。第一个负责未登录跳转，第二个负责无权返回 403；函数视图和 `View.as_view()` 均可使用这两个装饰器。现有示例见 `apps/equipment/views.py` 和 `apps/dpmu/views.py`。
+3. 使用 `{% if perms.dashboard.view_energy %}` 包裹对应导航入口。前端只负责显示，后端校验不可省略。
+4. 在后台给目标 Group 分配新权限。新权限默认不授予任何普通组；首次迁移仅初始化已有两项权限，以后不自动覆盖后台的人工分配。
+5. 增加有权、无权、匿名、直接 URL 和数据接口访问测试。现有矩阵测试位于 `apps/dashboard/tests.py` 的 `PagePermissionTests`。
+
+默认数据库是 SQL Server，本地账号可能没有创建测试数据库的权限。仅验证认证、模板及权限时，可使用临时 SQLite 内存数据库，不修改业务数据库：
+
+```powershell
+@'
+import os
+import sys
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+from django.conf import settings
+settings.DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': ':memory:'}}
+import django
+django.setup()
+from django.test.runner import DiscoverRunner
+failures = DiscoverRunner(verbosity=1, interactive=False).run_tests([
+	'apps.dashboard.tests', 'apps.equipment.tests.EquipmentPageTests',
+])
+sys.exit(bool(failures))
+'@ | .\.venv\Scripts\python.exe -
+```
+
+该测试不验证 SQL Server 特有行为，也不会创建或修改真实用户。
+
 # 质检数据接口
 
 `GET /analytics/data/?start_date=2026-10-04&end_date=2026-10-15&page=1&page_size=100`

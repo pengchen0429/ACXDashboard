@@ -9,7 +9,8 @@
   <link rel="stylesheet" href="{% static 'css/style.css' %}">
   {% block head_extra %}{% endblock %}
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
+  {% block navigation %}
   <button class="menu-toggle" id="menuToggle" type="button" aria-label="打开导航菜单" aria-expanded="false">☰</button>
   <div class="sidebar-overlay" id="sidebarOverlay"></div>
   <button class="sidebar-visibility-toggle" id="sidebarVisibilityToggle" type="button" aria-label="隐藏主导航" aria-controls="sidebar" aria-expanded="true">
@@ -19,7 +20,13 @@
   <aside class="sidebar" id="sidebar" aria-label="主导航">
     <div class="sidebar-header">
       <div class="logo-icon">⚙</div>
-      <h2>ACX智慧工厂</h2>
+      <div class="sidebar-brand-row">
+        <h2>ACX智慧工厂</h2>
+        <a class="sidebar-login" href="{% url 'login' %}">
+          <span class="sidebar-login-icon" aria-hidden="true">&#8618;</span>
+          <span>登录</span>
+        </a>
+      </div>
     </div>
     <nav class="sidebar-nav" id="sidebarNav" aria-label="功能菜单">
       <a class="nav-item{% if request.resolver_match.url_name == 'dashboard' %} active{% endif %}" href="{% url 'dashboard' %}" data-page="dashboard"{% if request.resolver_match.url_name == 'dashboard' %} aria-current="page"{% endif %}>
@@ -37,10 +44,12 @@
             <span class="nav-icon">🏭</span>
             <span class="nav-label">生产早会</span>
           </a>
+          {% if perms.dashboard.view_equipment %}
           <a class="nav-item{% if request.resolver_match.url_name == 'equipment' %} active{% endif %}" href="{% url 'equipment' %}" data-page="equipment"{% if request.resolver_match.url_name == 'equipment' %} aria-current="page"{% endif %}>
             <span class="nav-icon">⚙️</span>
             <span class="nav-label">设备管理</span>
           </a>
+          {% endif %}
           <button class="nav-item" type="button" data-page="quality">
             <span class="nav-icon">✅</span>
             <span class="nav-label">质量管控</span>
@@ -83,10 +92,12 @@
             <span class="nav-icon">📊</span>
             <span class="nav-label">质检统计</span>
           </a>
+          {% if perms.dashboard.view_dpmu %}
           <a class="nav-item{% if request.resolver_match.url_name == 'dpmu' %} active{% endif %}" href="{% url 'dpmu' %}" data-page="dpmu"{% if request.resolver_match.url_name == 'dpmu' %} aria-current="page"{% endif %}>
             <span class="nav-icon">&#128200;</span>
             <span class="nav-label">DPMU</span>
           </a>
+          {% endif %}
         </div>
         
       </details>
@@ -104,12 +115,15 @@
         </div>
       </details> {% endcomment %}
     </nav>
-    <div class="sidebar-footer"><div>v0.1.0</div></div>
+    <div class="sidebar-footer">
+      <div>v0.1.0</div>
+    </div>
   </aside>
-  <main class="main-content">
+  {% endblock %}
+  <main class="{% block main_class %}main-content{% endblock %}">
     {% block content %}{% endblock %}
   </main>
-  <script src="{% static 'js/base.js' %}"></script>
+  {% block base_js %}<script src="{% static 'js/base.js' %}"></script>{% endblock %}
   {% block extra_js %}{% endblock %}
 </body>
 </html>

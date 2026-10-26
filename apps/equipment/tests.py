@@ -4,14 +4,24 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from django.db import InterfaceError, OperationalError
-from django.test import SimpleTestCase
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
+from django.test import SimpleTestCase, TestCase as DjangoTestCase
 from django.urls import reverse
 
 from apps.equipment.management.commands.collect_machine_data import Command
 from common.db import FinsWordReader, collect_machine_data, get_machine_polling_intervals
 
 
-class EquipmentPageTests(SimpleTestCase):
+class EquipmentPageTests(DjangoTestCase):
+	@classmethod
+	def setUpTestData(cls):
+		cls.user = get_user_model().objects.create_user(username='equipment-manager')
+		cls.user.groups.add(Group.objects.get(name='manager'))
+
+	def setUp(self):
+		self.client.force_login(self.user)
+
 	def test_equipment_page_renders_with_active_navigation(self):
 		self.assertEqual(reverse('equipment'), '/equipment/')
 		response = self.client.get(reverse('equipment'))

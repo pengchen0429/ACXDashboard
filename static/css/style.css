@@ -31,9 +31,17 @@ body {
 }
 
 .sidebar-header {
+	flex-shrink: 0;
 	padding: 20px 14px 16px;
 	border-bottom: 1px solid var(--border);
 	text-align: center;
+}
+
+.sidebar-brand-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
 }
 
 .logo-icon {
@@ -110,11 +118,46 @@ body {
 }
 
 .sidebar-footer {
+	flex-shrink: 0;
 	padding: 14px;
 	border-top: 1px solid var(--border);
 	color: #627087;
 	font-size: 11px;
 	text-align: center;
+}
+
+.sidebar-login {
+	display: flex;
+	flex-shrink: 0;
+	min-height: 32px;
+	align-items: center;
+	justify-content: center;
+	gap: 4px;
+	padding: 4px 8px;
+	border: 1px solid rgba(0, 212, 255, 0.4);
+	border-radius: 6px;
+	background: rgba(0, 212, 255, 0.06);
+	color: var(--accent);
+	font-size: 13px;
+	font-weight: 500;
+	text-decoration: none;
+	transition: background 0.2s, border-color 0.2s;
+}
+
+.sidebar-login:hover,
+.sidebar-login:focus-visible {
+	border-color: var(--accent);
+	background: rgba(0, 212, 255, 0.12);
+}
+
+.sidebar-login:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 3px;
+}
+
+.sidebar-login-icon {
+	font-size: 18px;
+	line-height: 1;
 }
 
 .sidebar-visibility-toggle {

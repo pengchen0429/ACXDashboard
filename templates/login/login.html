@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}ACX智慧工厂 - 登录{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="{% static 'css/login.css' %}">
+{% endblock %}
+
+{% block body_class %}login-page{% endblock %}
+{% block navigation %}{% endblock %}
+{% block main_class %}login-main{% endblock %}
+{% block base_js %}{% endblock %}
+
+{% block content %}
+  <div class="login-container">
+    <div class="login-card">
+      <!-- Logo区域 -->
+      <div class="logo-section">
+        <div class="logo-icon">⚙</div>
+        <h1 class="logo-title">ACX智慧工厂</h1>
+        <p class="logo-subtitle">运营管理系统</p>
+      </div>
+
+      <!-- 错误提示 -->
+      <div class="error-message{% if form.errors %} show{% endif %}" id="errorMsg" role="alert">
+        <span>⚠</span>
+        <span id="errorText">{% if form.errors %}账号或密码错误，请重新输入。{% endif %}</span>
+      </div>
+
+      <!-- 登录表单 -->
+      <form id="loginForm" method="post" action="{% url 'login' %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}">
+        <div class="form-group">
+          <label class="form-label" for="username">账号</label>
+          <div class="input-wrapper">
+            <input 
+              type="text" 
+              class="form-input" 
+              id="username" 
+              name="username"
+              value="{{ form.username.value|default_if_none:'' }}"
+              placeholder="请输入您的账号"
+              autocomplete="username"
+              required
+            >
+            <span class="input-icon">👤</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="password">密码</label>
+          <div class="input-wrapper">
+            <input 
+              type="password" 
+              class="form-input" 
+              id="password" 
+              name="password"
+              placeholder="请输入您的密码"
+              autocomplete="current-password"
+              required
+            >
+            <span class="input-icon">🔒</span>
+          </div>
+        </div>
+
+        <button type="submit" class="login-btn" id="loginBtn">
+          登录系统
+        </button>
+      </form>
+
+      <!-- 底部信息 -->
+      <div class="footer-info">
+        <p>ACX智慧工厂运营系统 v0.1.0</p>
+        <p class="contact-info">
+          遇到问题？<a href="#contact">联系管理员</a>
+        </p>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/login.js' %}"></script>
+{% endblock %}
