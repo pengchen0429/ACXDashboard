@@ -1,28 +1,55 @@
 # 页面访问权限
 
-设备管理和 DPMU 使用 Django 原生权限。权限分配给 Group，用户通过所属 Group 获取权限；视图和导航使用相同的权限标识，不按组名写死访问判断。
+权限管理集中在 `apps/accounts`，继续使用 Django 原生 Group / Permission。用户通过所属 Group 获取权限；视图和导航使用相同的权限标识，不按组名写死访问判断。
 
 | 页面 | 权限标识 | 初始授权组 |
 | --- | --- | --- |
-| 设备管理 `/equipment/` | `dashboard.view_equipment` | `manager`、`admin` |
-| DPMU `/dpmu/` | `dashboard.view_dpmu` | `manager`、`admin` |
+| 设备管理 `/equipment/` | `accounts.view_equipment` | `manager`、`admin` |
+| DPMU `/dpmu/` | `accounts.view_dpmu` | `manager`、`admin` |
 
-- 执行 `python manage.py migrate dashboard` 初始化权限和授权。迁移只增加 Django 权限元数据及 Group 关联，不创建业务表，不删除现有用户、组或权限；回滚不会删除授权元数据。
-- `apps/dashboard/models.py` 的 `PageAccess.Meta.permissions` 是页面权限目录。`managed=False` 表示该模型只承载权限定义，不创建对应数据表，也不需要注册到后台。
-- 在 Django 后台进入“认证和授权 → 组 → 目标组 → 权限”，筛选 `Page access`，添加或移除 `Can view equipment page`、`Can view DPMU page` 后保存。
-- 初始 `visitor`、`user` 没有这两项权限。匿名用户看不到入口，直接访问跳转 `/login/?next=...`；已登录但无权限返回 HTTP 403。有权限的用户可以访问页面并看到入口，其余页面保持原规则。
+- 整理后执行 `python manage.py migrate`：`accounts.0001_initial` 将旧 `dashboard` 页面权限迁至 `accounts`，保留已有组授权和用户单独授权；无重复时保留权限 ID，同名重复时合并授权。`dashboard.0002_remove_pageaccess` 只移除旧模型状态，不删除业务表。已执行的历史迁移不能修改或删除。
+- 迁移不会重置已有组权限，也不会重新授予曾在后台撤销的权限。由于同名权限可能合并，该数据迁移不提供自动反向操作；需要降级时先规划备份和恢复方案。
+- `apps/accounts/models.py` 的 `PageAccess.Meta.permissions` 是统一权限目录。`managed=False` 表示只承载权限定义，不创建数据表，也不要在 admin 中注册该模型供增删改查。
+- `apps/accounts/decorators.py` 提供统一的 `page_permission_required`：自动加 `accounts.` 前缀，统一检查权限。匿名用户按 `visitor` 组的页面权限判断，有权直接访问，无权跳转登录；已登录用户无权返回 403。`apps/accounts/views.py` 和 `urls.py` 管理登录与 POST 退出，保留 `/login/`、`/logout/` 地址和路由名不变。
+- 目录中的 `view_dashboard`、`view_analytics`、`view_briefing`、`manage_settings`、`manage_users` 当前仅声明，未自动限制对应页面或授予普通组。这次整理只保持设备管理和 DPMU 的现有控制范围；`manage_users` 不等同于 Django admin 的用户增删改查权限。
+- 在 Django 后台进入“认证和授权 → 组 → 目标组 → 权限”，筛选 `accounts` 或 `Page access`，添加或移除 `Can view equipment`、`Can view dpmu` 后保存。新增目录项未授权时默认不能访问已接入检查的页面。
+- 初始 `visitor`、`user` 没有设备管理和 DPMU 权限。未登录用户默认使用 `visitor` 组的 `accounts.PageAccess` 权限，导航的 `perms.accounts.*` 与后端判断一致。后台授予 `visitor` 某页面权限即代表向未登录公众开放该页面及受同一权限保护的接口，撤销后从下一次请求起生效；其余页面仍保持原规则。
+- `apps/accounts/backends.py` 的 `VisitorPermissionBackend` 只补充匿名用户的业务页面权限，不创建或登录访客账号，不赋予 `is_staff`、超级管理员或 Django admin 模型权限。保留原 `ModelBackend` 作为第一个后端，因此原有登录会话和认证方式不变。已登录用户不会额外继承 `visitor` 权限，除非账号本身属于该组；缺少 `visitor` 组时默认无访客权限，访问过程不自动建组。
 - 多组权限及用户直接权限取并集，不存在“拒绝组”覆盖允许组的规则。需要严格按组管理时，不要向用户单独授予页面权限。
 - 已启用的超级管理员默认拥有全部权限。名为 `admin` 的 Group 不等同于超级管理员，也不会自动授予 `is_staff` 后台资格；仅有 `is_staff` 也不代表具有业务页面权限。
 - 登录保留 Django 的安全 `next` 跳转。默认跳转为管理后台时，非 `is_staff` 用户改为运营首页，后台人员仍使用 `LOGIN_REDIRECT_URL` 配置。
+- `SESSION_EXPIRE_AT_BROWSER_CLOSE=True` 使用浏览器会话 Cookie：使用期间保持登录，关闭整个浏览器并丢弃会话 Cookie 后，再次打开按匿名 `visitor` 权限访问。关闭单个标签页不会退出；部分浏览器“恢复上次会话”功能可能保留会话 Cookie。已有持久 Cookie 不会被设置自动删除，首次切换需要先退出再重新登录，或者清除本站 Cookie；服务器重启不会自动清除浏览器登录状态。
+- 顶部未登录时显示登录入口，登录后显示账号名和退出按钮；长账号名省略显示，悬停可查看完整名称。退出必须通过带 CSRF 的 POST 请求，清除会话后默认返回运营首页。Django 3.2 的退出视图在 `dispatch` 中处理退出，因此 `accounts/urls.py` 外层使用 `require_POST` 拒绝 GET，不能仅设置 `http_method_names`。
 - 设备管理与 DPMU 当前没有独立 HTTP 数据接口；未来新增 API、导出接口时，必须应用相应页面权限或单独定义操作权限，不能仅隐藏按钮。
 
-## 后续新增受控页面
+## 后续新增 app 和受控页面
 
-1. 在 `PageAccess.Meta.permissions` 增加一项，例如 `('view_energy', 'Can view energy page')`，运行 `python manage.py makemigrations dashboard`、`python manage.py migrate dashboard`。
-2. 在新页面视图上依次使用 `@login_required(login_url='login')` 和 `@permission_required('dashboard.view_energy', raise_exception=True)`。第一个负责未登录跳转，第二个负责无权返回 403；函数视图和 `View.as_view()` 均可使用这两个装饰器。现有示例见 `apps/equipment/views.py` 和 `apps/dpmu/views.py`。
-3. 使用 `{% if perms.dashboard.view_energy %}` 包裹对应导航入口。前端只负责显示，后端校验不可省略。
-4. 在后台给目标 Group 分配新权限。新权限默认不授予任何普通组；首次迁移仅初始化已有两项权限，以后不自动覆盖后台的人工分配。
-5. 增加有权、无权、匿名、直接 URL 和数据接口访问测试。现有矩阵测试位于 `apps/dashboard/tests.py` 的 `PagePermissionTests`。
+1. 创建业务 app（例如 `apps/energy`），确保其 `AppConfig.name = 'apps.energy'`，加入 `INSTALLED_APPS` 并配置业务 URL。业务 app 自身只负责业务功能，无需重复定义 `PageAccess`。
+2. 在 `apps/accounts/models.py` 的 `PageAccess.Meta.permissions` 增加 `('view_energy', 'Can view energy')`。统一权限标识仍为 `accounts.view_energy`，不是 `energy.view_energy`；每个 codename 在该目录内必须唯一。
+3. 运行 `python manage.py makemigrations accounts`。若新 app 有自己的业务模型，也运行 `python manage.py makemigrations energy`；最后运行 `python manage.py migrate`。新权限会在迁移后自动出现在后台的组权限列表中。
+4. 使用下面的统一装饰器保护页面、数据接口和导出接口；未登录时按 `visitor` 组判断，有权直接访问，无权跳转 `/login/?next=...`；已登录无权限返回 403。
+
+```python
+from django.shortcuts import render
+from apps.accounts.decorators import page_permission_required
+
+@page_permission_required('view_energy')
+def energy(request):
+	return render(request, 'energy/energy.html')
+```
+
+对于类视图，可以在 URL 中使用 `page_permission_required('view_energy')(EnergyView.as_view())`。
+
+5. 在导航中使用对应权限条件：
+
+```django
+{% if perms.accounts.view_energy %}
+<a class="nav-item" href="{% url 'energy' %}">能耗管理</a>
+{% endif %}
+```
+
+6. 在后台给目标 Group 分配 `accounts | Page access | Can view energy` 并保存。新权限默认不授予任何普通组，也不会自动给 `manager`、`admin`；权限变更不需要修改装饰器或组名判断。
+7. 增加有权、无权、匿名、直接 URL 和接口测试。现有访问矩阵与登录退出回归测试保留在 `apps/dashboard/tests.py`，跨应用授权迁移测试位于 `apps/accounts/tests.py`。给旧页面新增访问限制时，先分配权限再启用检查，避免用户被意外锁在页面之外。
 
 默认数据库是 SQL Server，本地账号可能没有创建测试数据库的权限。仅验证认证、模板及权限时，可使用临时 SQLite 内存数据库，不修改业务数据库：
 
@@ -37,7 +64,7 @@ import django
 django.setup()
 from django.test.runner import DiscoverRunner
 failures = DiscoverRunner(verbosity=1, interactive=False).run_tests([
-	'apps.dashboard.tests', 'apps.equipment.tests.EquipmentPageTests',
+	'apps.accounts.tests', 'apps.dashboard.tests', 'apps.equipment.tests.EquipmentPageTests',
 ])
 sys.exit(bool(failures))
 '@ | .\.venv\Scripts\python.exe -

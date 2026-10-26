@@ -31,6 +31,29 @@ class LoginTests(TestCase):
 		self.assertRedirects(response, reverse('dashboard'))
 		self.assertEqual(client.session[SESSION_KEY], str(self.user.pk))
 
+	def test_login_uses_browser_session_cookie(self):
+		response = self.client.post(reverse('login'), {
+			'username': self.user.username,
+			'password': 'short',
+		})
+		cookie = response.cookies[settings.SESSION_COOKIE_NAME]
+		self.assertEqual(cookie['max-age'], '')
+		self.assertEqual(cookie['expires'], '')
+		self.assertTrue(self.client.session.get_expire_at_browser_close())
+		response = self.client.get(reverse('dashboard'))
+		self.assertTrue(response.wsgi_request.user.is_authenticated)
+
+	def test_browser_without_session_cookie_is_anonymous(self):
+		self.client.post(reverse('login'), {
+			'username': self.user.username,
+			'password': 'short',
+		})
+		self.client.cookies.pop(settings.SESSION_COOKIE_NAME)
+		response = self.client.get(reverse('dashboard'))
+		self.assertFalse(response.wsgi_request.user.is_authenticated)
+		self.assertNotContains(response, 'class="sidebar-account"')
+		self.assertContains(response, 'class="sidebar-login" href="' + reverse('login') + '"')
+
 	def test_staff_login_preserves_configured_redirect(self):
 		self.user.is_staff = True
 		self.user.save(update_fields=['is_staff'])
@@ -74,6 +97,71 @@ class LoginTests(TestCase):
 		self.assertRedirects(response, reverse('dashboard'))
 
 
+class AccountNavigationTests(TestCase):
+	@classmethod
+	def setUpTestData(cls):
+		cls.user = get_user_model().objects.create_user(username='account-user')
+		cls.user.groups.add(Group.objects.get(name='manager'))
+
+	def test_anonymous_navigation_shows_login_only(self):
+		response = self.client.get(reverse('dashboard'))
+		self.assertContains(response, 'class="sidebar-login" href="' + reverse('login') + '"')
+		self.assertNotContains(response, 'class="sidebar-account"')
+		self.assertNotContains(response, 'class="sidebar-logout-form"')
+
+	def test_authenticated_navigation_shows_username_and_logout(self):
+		self.client.force_login(self.user)
+		response = self.client.get(reverse('dashboard'))
+		self.assertContains(response, '<span class="sidebar-username-text">account-user</span>', html=True)
+		self.assertContains(response, 'class="sidebar-logout-form" method="post" action="' + reverse('logout') + '"')
+		self.assertContains(response, 'name="csrfmiddlewaretoken"')
+		self.assertNotContains(response, 'class="sidebar-login" href="' + reverse('login') + '"')
+
+	def test_username_is_html_escaped(self):
+		self.user.username = '<script>unsafe</script>'
+		self.user.save(update_fields=['username'])
+		self.client.force_login(self.user)
+		response = self.client.get(reverse('dashboard'))
+		self.assertContains(response, '&lt;script&gt;unsafe&lt;/script&gt;')
+		self.assertNotContains(response, '<script>unsafe</script>')
+
+	def test_long_username_is_preserved_in_tooltip(self):
+		self.user.username = 'account-' + 'long' * 35
+		self.user.save(update_fields=['username'])
+		self.client.force_login(self.user)
+		response = self.client.get(reverse('dashboard'))
+		self.assertContains(response, 'title="' + self.user.username + '"')
+
+	def test_logout_post_with_csrf_clears_session_and_permissions(self):
+		client = Client(enforce_csrf_checks=True)
+		client.force_login(self.user)
+		response = client.get(reverse('dashboard'))
+		self.assertContains(response, 'data-page="equipment"')
+		response = client.post(reverse('logout'), {
+			'csrfmiddlewaretoken': client.cookies['csrftoken'].value,
+		})
+		self.assertRedirects(response, reverse('dashboard'))
+		self.assertNotIn(SESSION_KEY, client.session)
+		response = client.get(reverse('dashboard'))
+		self.assertNotContains(response, 'class="sidebar-account"')
+		self.assertNotContains(response, 'data-page="equipment"')
+		self.assertNotContains(response, 'data-page="dpmu"')
+		self.assertRedirects(client.get(reverse('equipment')), reverse('login') + '?next=' + reverse('equipment'))
+
+	def test_logout_without_csrf_does_not_end_session(self):
+		client = Client(enforce_csrf_checks=True)
+		client.force_login(self.user)
+		response = client.post(reverse('logout'))
+		self.assertEqual(response.status_code, 403)
+		self.assertIn(SESSION_KEY, client.session)
+
+	def test_logout_get_does_not_end_session(self):
+		self.client.force_login(self.user)
+		response = self.client.get(reverse('logout'))
+		self.assertEqual(response.status_code, 405)
+		self.assertIn(SESSION_KEY, self.client.session)
+
+
 class PagePermissionTests(TestCase):
 	@classmethod
 	def setUpTestData(cls):
@@ -90,7 +178,7 @@ class PagePermissionTests(TestCase):
 		for name in ('visitor', 'user', 'manager', 'admin'):
 			with self.subTest(group=name):
 				permissions = set(Group.objects.get(name=name).permissions.filter(
-					content_type__app_label='dashboard',
+					content_type__app_label='accounts',
 				).values_list('codename', flat=True))
 				expected = {'view_equipment', 'view_dpmu'} if name in ('manager', 'admin') else set()
 				self.assertEqual(permissions, expected)
@@ -160,7 +248,7 @@ class PagePermissionTests(TestCase):
 	def test_each_page_uses_its_own_permission(self):
 		user = get_user_model().objects.create_user(username='equipment-only')
 		user.user_permissions.add(Permission.objects.get(
-			content_type__app_label='dashboard', codename='view_equipment',
+			content_type__app_label='accounts', codename='view_equipment',
 		))
 		self.client.force_login(user)
 		response = self.client.get(reverse('dashboard'))

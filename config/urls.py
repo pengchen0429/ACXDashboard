@@ -19,8 +19,6 @@ from django.urls import include, path
 from django.views.generic import RedirectView, TemplateView
 from django.conf import settings
 from django.conf.urls.static import static
-from django.contrib.auth import views as auth_views
-from apps.dashboard.views import DashboardLoginView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -30,6 +28,7 @@ urlpatterns = [
     path('equipment/', include('apps.equipment.urls')),
     path('analytics/', include('apps.analytics.urls')),
     path('dpmu/', include('apps.dpmu.urls')),
+    path('', include('apps.accounts.urls')),
 ]
 
 urlpatterns += static(
@@ -37,18 +36,3 @@ urlpatterns += static(
     document_root=settings.STATICFILES_DIRS[0]
 )
 
-urlpatterns += [
-    path(
-        'login/',
-        DashboardLoginView.as_view(
-            template_name='login/login.html'
-        ),
-        name='login'
-    ),
-
-    path(
-        'logout/',
-        auth_views.LogoutView.as_view(),
-        name='logout'
-    ),
-]

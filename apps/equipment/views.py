@@ -1,8 +1,8 @@
-from django.contrib.auth.decorators import login_required, permission_required
 from django.shortcuts import render
 
+from apps.accounts.decorators import page_permission_required
 
-@login_required(login_url='login')
-@permission_required('dashboard.view_equipment', raise_exception=True)
+
+@page_permission_required('view_equipment')
 def equipment(request):
 	return render(request, 'equipment/equipment.html')

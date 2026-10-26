@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'apps.briefing',
     'apps.equipment',
     'apps.dpmu',
+    'apps.accounts',
 ]
 
 MIDDLEWARE = [
@@ -144,6 +145,12 @@ AUTH_PASSWORD_VALIDATORS = [
 
 
 LOGIN_REDIRECT_URL = 'admin:index'
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+    'apps.accounts.backends.VisitorPermissionBackend',
+]
 
 
 # Internationalization

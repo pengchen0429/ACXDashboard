@@ -160,6 +160,41 @@ body {
 	line-height: 1;
 }
 
+.sidebar-account {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin-top: 12px;
+}
+
+.sidebar-username {
+	display: flex;
+	flex: 1;
+	min-width: 0;
+	align-items: center;
+	gap: 6px;
+	color: var(--text);
+	font-size: 13px;
+}
+
+.sidebar-username-text {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.sidebar-logout-form {
+	flex-shrink: 0;
+	margin: 0;
+}
+
+.sidebar-logout {
+	font-family: inherit;
+	cursor: pointer;
+}
+
 .sidebar-visibility-toggle {
 	position: fixed;
 	z-index: 101;
