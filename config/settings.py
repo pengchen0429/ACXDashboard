@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -46,6 +47,7 @@ INSTALLED_APPS = [
     'apps.dpmu',
     'apps.accounts',
     'apps.organization',
+    'apps.l2l',
 ]
 
 MIDDLEWARE = [
@@ -62,6 +64,7 @@ ROOT_URLCONF = 'config.urls'
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -77,8 +80,10 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'config.wsgi.application'
 
+
+
+WSGI_APPLICATION = 'config.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
