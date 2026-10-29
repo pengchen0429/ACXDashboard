@@ -1,0 +1,189 @@
+  .briefing-page {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    background: radial-gradient(ellipse at 50% 0%, #10264d 0%, #081428 55%, #050d1c 100%);
+    color: #d7e6ff;
+    min-height: 100vh;
+  }
+  .page-wrapper { max-width: 1400px; margin: 0 auto; padding: 24px 28px 32px; }
+
+  /* ===== 顶部标题栏 ===== */
+  .dash-header {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 10px;
+    padding: 14px 24px; margin-bottom: 20px;
+    background: linear-gradient(90deg, rgba(20,50,100,.55), rgba(12,30,64,.35), rgba(20,50,100,.55));
+    border: 1px solid rgba(64,140,255,.25);
+    border-radius: 12px;
+  }
+  .dash-title {
+    font-size: 26px; font-weight: 700; letter-spacing: 3px;
+    background: linear-gradient(180deg, #ffffff, #7db6ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .dash-sub { font-size: 12px; color: #7d9cc9; margin-top: 4px; letter-spacing: 1px; }
+  .dash-meta { text-align: right; font-size: 13px; color: #9db8e0; line-height: 1.7; }
+  .safety-time-filter {
+    display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap;
+    gap: 8px 12px; margin-top: 8px; max-width: 100%; text-align: left;
+  }
+  .safety-time-heading { color: #a7bfce; font-size: 12px; white-space: nowrap; }
+  .safety-time-fields { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+  .safety-time-field { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; }
+  .safety-time-field input {
+    box-sizing: border-box; width: 218px; max-width: 100%; min-width: 0; height: 34px;
+    padding: 5px 8px; border: 1px solid rgba(112, 161, 197, .35); border-radius: 4px;
+    background: #0c2036; color: #e2edf4; color-scheme: dark; font: inherit;
+  }
+  .safety-time-actions { display: flex; align-items: center; gap: 6px; }
+  .safety-time-actions button {
+    height: 34px; padding: 0 12px; border: 1px solid rgba(112, 161, 197, .35);
+    border-radius: 4px; background: transparent; color: #b6cbd8; font: inherit;
+    font-size: 12px; white-space: nowrap; cursor: pointer;
+  }
+  .safety-time-actions .safety-time-query { background: #74dfac; border-color: #74dfac; color: #102b25; }
+  .safety-time-actions button:hover { border-color: #a4d5c1; }
+  .safety-time-field input:focus-visible, .safety-time-actions button:focus-visible {
+    outline: 2px solid #74dfac; outline-offset: 2px;
+  }
+  .demo-badge {
+    display: inline-block; padding: 2px 10px; border-radius: 20px;
+    background: rgba(250,200,88,.14); border: 1px solid rgba(250,200,88,.5);
+    color: #fac858; font-size: 12px; letter-spacing: 1px;
+  }
+
+  /* ===== KPI 卡片 ===== */
+  .kpi-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
+  .kpi-card {
+    position: relative; overflow: hidden;
+    background: linear-gradient(160deg, rgba(23,48,94,.75), rgba(11,26,54,.85));
+    border: 1px solid rgba(64,140,255,.22); border-radius: 12px;
+    padding: 16px 18px 14px;
+  }
+  .kpi-card::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+    background: var(--kpi-color, #409cff);
+  }
+  .kpi-tag { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #9db8e0; letter-spacing: 1px; }
+  .kpi-letter {
+    width: 26px; height: 26px; border-radius: 6px; display: inline-flex;
+    align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 700; color: #06121f;
+    background: var(--kpi-color, #409cff);
+  }
+  .kpi-value { font-size: 32px; font-weight: 700; color: #f2f8ff; margin: 8px 0 2px; font-variant-numeric: tabular-nums; }
+  .kpi-value .unit { font-size: 14px; font-weight: 400; color: #7d9cc9; margin-left: 4px; }
+  .kpi-delta { font-size: 12px; }
+  #safety-kpi {
+    background: linear-gradient(145deg, rgba(18, 49, 47, .92), rgba(11, 26, 54, .96));
+    border-color: rgba(52, 217, 126, .28);
+  }
+  #safety-kpi::before { width: 3px; }
+  .safety-summary {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding-bottom: 12px; border-bottom: 1px solid rgba(126, 201, 168, .18);
+  }
+  #safety-kpi .kpi-tag { color: #d3e6e2; font-size: 12px; letter-spacing: 0; }
+  #safety-kpi .kpi-letter {
+    flex: 0 0 26px; background: rgba(52, 217, 126, .14); color: #76eab0;
+    border: 1px solid rgba(52, 217, 126, .3);
+  }
+  #safety-kpi .kpi-value {
+    flex: 0 0 auto; margin: 0; color: #8af0bb; font-size: 32px; line-height: 1;
+  }
+  #safety-kpi .unit { font-size: 12px; color: #94b5af; }
+  .safety-status { min-height: 102px; margin-top: 4px; line-height: 1.5; }
+  .safety-area-row {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 8px;
+    min-height: 34px; padding: 6px 0; font-variant-numeric: tabular-nums;
+  }
+  .safety-area-row + .safety-area-row { border-top: 1px solid rgba(145, 180, 193, .1); }
+  .safety-area-name { color: #c3d6dc; font-size: 12px; font-weight: 500; }
+  .safety-area-metrics { display: flex; flex-wrap: wrap; gap: 2px 4px; min-width: 0; color: #89a5b4; font-size: 11px; }
+  .safety-area-metric { white-space: nowrap; }
+  .safety-area-metrics strong { margin: 0 2px; color: #edf6f7; font-size: 13px; font-weight: 600; }
+  .safety-area-metrics .safety-area-completed { color: #79dcb0; }
+  .safety-area-metrics .safety-area-unclosed { color: #fac858; }
+  .up { color: #34d97e; } .down { color: #ff6b6b; } .flat { color: #7d9cc9; }
+
+  /* ===== 图表网格 ===== */
+  .chart-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .card {
+    background: linear-gradient(160deg, rgba(19,41,82,.6), rgba(9,21,45,.8));
+    border: 1px solid rgba(64,140,255,.18); border-radius: 12px;
+    padding: 10px 10px 6px;
+  }
+  .chart-container { width: 100%; height: 320px; }
+  .safety-chart-card { display: flex; flex-direction: column; }
+  .safety-chart-header { flex: 0 0 32px; box-sizing: border-box; padding: 4px 0 8px; text-align: center; }
+  .safety-chart-header h2 { margin: 0; color: #e8f2ff; font-size: 14px; font-weight: 600; line-height: 20px; letter-spacing: 0; }
+  .safety-chart-card .chart-container { height: 288px; }
+
+  .footer-note { margin-top: 18px; font-size: 12px; color: #5f7ba6; text-align: center; letter-spacing: 1px; }
+
+  @media (min-width: 1201px) {
+    .briefing-page {
+      max-width: none;
+      display: flex;
+      height: 100vh;
+      height: 100dvh;
+      min-height: 0;
+      flex-direction: column;
+      overflow: hidden;
+      padding-top: 12px;
+      padding-bottom: 10px;
+    }
+    .briefing-page .dash-header {
+      flex: 0 0 auto;
+      margin-bottom: 12px;
+      padding: 12px 20px;
+    }
+    .briefing-page .kpi-row {
+      flex: 0 0 auto;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .briefing-page .kpi-card { padding: 12px 14px 10px; }
+    .briefing-page .kpi-value { margin-top: 6px; font-size: 28px; }
+    .briefing-page .chart-grid {
+      flex: 1 1 auto;
+      min-height: 0;
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .briefing-page .card {
+      display: flex;
+      min-height: 0;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .briefing-page .chart-container {
+      flex: 1 1 auto;
+      min-height: 0;
+      height: auto;
+    }
+    .briefing-page .footer-note {
+      flex: 0 0 auto;
+      margin-top: 8px;
+      font-size: 11px;
+    }
+  }
+
+  @media (max-width: 1200px) {
+    .chart-grid { grid-template-columns: repeat(2, 1fr); }
+    .kpi-row { grid-template-columns: repeat(3, 1fr); }
+    #safety-kpi { grid-column: span 2; }
+  }
+  @media (max-width: 768px) {
+    .page-wrapper { padding: 16px 12px 24px; }
+    .chart-grid { grid-template-columns: 1fr; }
+    .kpi-row { grid-template-columns: repeat(2, 1fr); }
+    .dash-title { font-size: 19px; }
+    .chart-container { height: 300px; }
+    .safety-chart-card .chart-container { height: 268px; }
+    .dash-meta { width: 100%; max-width: 100%; }
+    .safety-time-filter { justify-content: flex-start; }
+    .safety-time-fields { display: grid; width: 100%; }
+    .safety-time-field { display: grid; grid-template-columns: 28px minmax(0, 1fr); }
+    .safety-time-field input { width: 100%; }
+    .safety-time-actions { margin-left: auto; }
+  }

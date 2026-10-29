@@ -1,0 +1,188 @@
+  .dpmu-page, .dpmu-page * { margin: 0; padding: 0; box-sizing: border-box; }
+  .dpmu-page {
+    container-type: inline-size;
+    container-name: dpmu;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    background: radial-gradient(ellipse at 50% 0%, #10264d 0%, #081428 55%, #050d1c 100%);
+    color: #d7e6ff;
+    min-height: 100vh;
+  }
+  .dpmu-page .page-wrapper { width: 100%; min-width: 0; padding: 24px 12px 32px; }
+
+  /* ===== 顶部标题栏 ===== */
+  .dpmu-page .dash-header {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 10px;
+    padding: 14px 24px; margin-bottom: 16px;
+    background: linear-gradient(90deg, rgba(20,50,100,.55), rgba(12,30,64,.35), rgba(20,50,100,.55));
+    border: 1px solid rgba(64,140,255,.25);
+    border-radius: 12px;
+  }
+  .dpmu-page .dash-title {
+    font-size: 26px; font-weight: 700; letter-spacing: 3px;
+    background: linear-gradient(180deg, #ffffff, #7db6ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .dpmu-page .dash-sub { font-size: 12px; color: #7d9cc9; margin-top: 4px; letter-spacing: 1px; }
+  .dpmu-page .dash-meta { text-align: right; font-size: 13px; color: #9db8e0; line-height: 1.7; }
+  .dpmu-page .data-cutoff { font-size: 12px; color: #7d9cc9; }
+  .dpmu-page .demo-badge {
+    display: inline-block; padding: 2px 10px; border-radius: 20px;
+    background: rgba(250,200,88,.14); border: 1px solid rgba(250,200,88,.5);
+    color: #fac858; font-size: 12px; letter-spacing: 1px; margin-right: 8px;
+  }
+  .dpmu-page .live-clock {
+    display: inline-block; font-size: 18px; font-weight: 600;
+    color: #7be8ab; font-variant-numeric: tabular-nums; letter-spacing: 1px;
+  }
+  .dpmu-page .live-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: #34d97e; margin-right: 6px;
+    animation: dpmu-pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes dpmu-pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  /* ===== Tab 按钮栏 ===== */
+  .dpmu-page .tab-bar {
+    display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap;
+  }
+  .dpmu-page .tab-btn {
+    padding: 10px 32px; border-radius: 8px;
+    border: 1px solid rgba(64,140,255,.25);
+    background: rgba(19,41,82,.5); color: #9db8e0;
+    font-size: 14px; font-weight: 500; cursor: pointer;
+    transition: all 0.3s ease; letter-spacing: 2px;
+    user-select: none;
+  }
+  .dpmu-page .tab-btn:hover { background: rgba(64,140,255,.15); color: #d7e6ff; }
+  .dpmu-page .tab-btn.active {
+    background: linear-gradient(135deg, #409cff, #2d7cd6);
+    color: #fff; border-color: #409cff;
+    box-shadow: 0 2px 14px rgba(64,156,255,.35);
+  }
+
+  /* ===== 筛选栏 ===== */
+  .dpmu-page .filter-bar {
+    display: flex; gap: 14px; flex-wrap: wrap; align-items: center;
+    padding: 12px 18px; margin-bottom: 18px;
+    background: linear-gradient(160deg, rgba(19,41,82,.45), rgba(9,21,45,.55));
+    border: 1px solid rgba(64,140,255,.15); border-radius: 10px;
+  }
+  .dpmu-page .filter-group { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+  .dpmu-page .filter-group label {
+    font-size: 12px; color: #7d9cc9; white-space: nowrap; letter-spacing: .5px;
+  }
+  .dpmu-page .filter-group select, .dpmu-page .filter-group input[type="datetime-local"] {
+    background: rgba(10,25,52,.8);
+    border: 1px solid rgba(64,140,255,.3); border-radius: 6px;
+    color: #d7e6ff; padding: 6px 12px; font-size: 12px;
+    outline: none; cursor: pointer; min-width: 100px; max-width: 100%;
+  }
+  .dpmu-page .filter-group input[type="datetime-local"] { width: 230px; min-width: 0; color-scheme: dark; }
+  .dpmu-page .filter-group select:hover, .dpmu-page .filter-group input:hover {
+    border-color: rgba(64,140,255,.5);
+  }
+  .dpmu-page .filter-group select:focus, .dpmu-page .filter-group input:focus {
+    border-color: #409cff; box-shadow: 0 0 0 2px rgba(64,156,255,.2);
+  }
+  .dpmu-page .filter-group select option { background: #0a1934; color: #d7e6ff; }
+  .dpmu-page .filter-btn {
+    padding: 6px 20px; border-radius: 6px;
+    background: linear-gradient(135deg, #409cff, #2d7cd6);
+    color: #fff; font-size: 12px; font-weight: 500;
+    border: none; cursor: pointer; letter-spacing: 1px;
+    transition: all 0.2s ease;
+  }
+  .dpmu-page .filter-btn:hover { box-shadow: 0 2px 10px rgba(64,156,255,.4); }
+  .dpmu-page .filter-sep {
+    color: rgba(64,140,255,.3); font-size: 12px; margin: 0 2px;
+  }
+
+  /* ===== 图表网格 ===== */
+  .dpmu-page .chart-grid {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px; margin-bottom: 20px;
+    transition: opacity 0.25s ease;
+  }
+  .dpmu-page .chart-grid.fading { opacity: 0.3; }
+  .dpmu-page .card {
+    min-width: 0;
+    background: linear-gradient(160deg, rgba(19,41,82,.6), rgba(9,21,45,.8));
+    border: 1px solid rgba(64,140,255,.18); border-radius: 12px;
+    padding: 8px 8px 4px;
+  }
+  .dpmu-page .chart-container { width: 100%; height: 310px; }
+
+  .dpmu-page .footer-note { margin-top: 14px; font-size: 12px; color: #5f7ba6; text-align: center; letter-spacing: 1px; }
+
+  @container dpmu (max-width: 1200px) {
+    .dpmu-page .chart-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @container dpmu (max-width: 768px) {
+    .dpmu-page .page-wrapper { padding: 16px 12px 24px; }
+    .dpmu-page .chart-grid { grid-template-columns: minmax(0, 1fr); }
+    .dpmu-page .dash-title { font-size: 19px; }
+    .dpmu-page .chart-container { height: 280px; }
+    .dpmu-page .tab-btn { padding: 8px 20px; font-size: 13px; }
+    .dpmu-page .filter-bar { padding: 10px 12px; gap: 10px; }
+  }
+
+  @media (min-width: 1201px) {
+    .dpmu-page .page-wrapper {
+      display: grid;
+      height: 100vh;
+      height: 100dvh;
+      grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+      gap: 8px;
+      padding: 10px 12px;
+    }
+    .dpmu-page .dash-header {
+      min-width: 0;
+      gap: 8px 16px;
+      margin: 0;
+      padding: 0 0 8px;
+      border: 0;
+      border-bottom: 1px solid rgba(100,180,255,.12);
+      border-radius: 0;
+      background: none;
+    }
+    .dpmu-page .dash-title { font-size: 21px; }
+    .dpmu-page .dash-sub { margin-top: 2px; }
+    .dpmu-page .dash-meta { line-height: 1.4; }
+    .dpmu-page .live-clock { font-size: 16px; }
+    .dpmu-page .tab-bar { gap: 6px; margin: 0; }
+    .dpmu-page .tab-btn { padding: 6px 20px; font-size: 13px; }
+    .dpmu-page .filter-bar {
+      gap: 6px 10px;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: none;
+    }
+    .dpmu-page .filter-group select,
+    .dpmu-page .filter-group input[type="datetime-local"] { padding: 4px 8px; }
+    .dpmu-page .chart-grid {
+      min-height: 0;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-rows: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin: 0;
+    }
+    .dpmu-page .card {
+      display: flex;
+      min-height: 0;
+      padding: 4px;
+      border-radius: 8px;
+    }
+    .dpmu-page .chart-container { min-height: 0; height: 100%; }
+    .dpmu-page .footer-note { margin: 0; font-size: 11px; }
+    .dpmu-page .dash-title,
+    .dpmu-page .dash-sub,
+    .dpmu-page .demo-badge,
+    .dpmu-page .live-clock,
+    .dpmu-page .tab-btn,
+    .dpmu-page .filter-group label,
+    .dpmu-page .filter-btn,
+    .dpmu-page .footer-note { letter-spacing: 0; }
+  }
