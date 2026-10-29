@@ -1,3 +1,71 @@
+(function() {
+  var card = document.getElementById('safety-kpi');
+  if (!card) return;
+  var reported = document.getElementById('safety-reported');
+  var details = document.getElementById('safety-details');
+  var period = document.getElementById('safety-period');
+
+  async function loadSafety() {
+    var controller = new AbortController();
+    var timer = setTimeout(function() { controller.abort(); }, 35000);
+    card.setAttribute('aria-busy', 'true');
+    reported.textContent = '--';
+    details.querySelectorAll('.safety-area-reported, .safety-area-completed').forEach(function(value) {
+      value.textContent = '--';
+    });
+    try {
+      var response = await fetch(card.dataset.url, {
+        signal: controller.signal,
+        credentials: 'same-origin',
+        cache: 'no-store'
+      });
+      if (!response.ok) throw new Error('Safety request failed');
+      var result = await response.json();
+      if (!result.available || !Number.isInteger(result.reported) || result.reported < 0 ||
+          !Number.isInteger(result.completed) || result.completed < 0 ||
+          !Array.isArray(result.areas)) {
+        throw new Error('Invalid safety response');
+      }
+      var rows = result.areas.map(function(area) {
+        if (typeof area.label !== 'string' ||
+            !Number.isInteger(area.reported) || area.reported < 0 ||
+            !Number.isInteger(area.completed) || area.completed < 0) {
+          throw new Error('Invalid area response');
+        }
+        var row = document.createElement('div');
+        row.className = 'safety-area-row';
+        row.dataset.label = area.label;
+        var name = document.createElement('span');
+        name.className = 'safety-area-name';
+        name.textContent = area.label;
+        var metrics = document.createElement('span');
+        metrics.className = 'safety-area-metrics';
+        var areaReported = document.createElement('strong');
+        areaReported.className = 'safety-area-reported';
+        areaReported.textContent = area.reported;
+        var areaCompleted = document.createElement('strong');
+        areaCompleted.className = 'safety-area-completed';
+        areaCompleted.textContent = area.completed;
+        metrics.append('新增 ', areaReported, ' 起，完成 ', areaCompleted, ' 起');
+        row.append(name, ' ', metrics);
+        return row;
+      });
+      period.textContent = result.start.slice(0, 16).replace('T', ' ') + ' 至 ' +
+        result.end.slice(0, 16).replace('T', ' ');
+      reported.textContent = result.reported;
+      details.replaceChildren.apply(details, rows);
+    } catch (error) {
+      reported.textContent = '--';
+      console.warn('Unable to load safety counts', error);
+    } finally {
+      clearTimeout(timer);
+      card.setAttribute('aria-busy', 'false');
+    }
+  }
+
+  loadSafety();
+})();
+
 var isMobile = window.innerWidth <= 768;
 
 /* ================= 示例数据（可整体替换为真实数据） ================= */

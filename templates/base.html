@@ -81,23 +81,6 @@
           </button>
         </div>
       </details>
-      <details class="nav-group">
-        <summary class="nav-item">
-          <span class="nav-icon">🛡️</span>
-          <span class="nav-label">SHEEF安全</span>
-          <span class="nav-chevron" aria-hidden="true">&#8250;</span>
-        </summary>
-        <div class="nav-submenu">
-          <button class="nav-item" type="button" data-page="safety1">
-            <span class="nav-icon">🦺</span>
-            <span class="nav-label">安全1</span>
-          </button>
-          <button class="nav-item" type="button" data-page="safety2">
-            <span class="nav-icon">🦺</span>
-            <span class="nav-label">安全2</span>
-          </button>
-        </div>
-      </details>
       <details class="nav-group"{% if request.resolver_match.url_name == 'analytics' or request.resolver_match.url_name == 'dpmu' %} open{% endif %}>
         <summary class="nav-item">
           <span class="nav-icon">✅</span>
@@ -118,19 +101,6 @@
         </div>
         
       </details>
-      {% comment %} <details class="nav-group">
-        <summary class="nav-item">
-          <span class="nav-icon">🚚</span>
-          <span class="nav-label">LOG物流</span>
-          <span class="nav-chevron" aria-hidden="true">&#8250;</span>
-        </summary>
-        <div class="nav-submenu">
-          <button class="nav-item" type="button" data-page="logistics">
-            <span class="nav-icon">📦</span>
-            <span class="nav-label">物流流转</span>
-          </button>
-        </div>
-      </details> {% endcomment %}
     </nav>
     <div class="sidebar-footer">
       <div>v0.1.0</div>

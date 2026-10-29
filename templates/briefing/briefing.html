@@ -21,17 +21,28 @@
       <div class="dash-sub">SAFETY 安全 · QUALITY 质量 · DELIVERY 交付 · COST 成本 · MORALE 士气</div>
     </div>
     <div class="dash-meta">
-      <span class="demo-badge">示例数据 · 模板演示</span><br>
-      统计周期：2025-11 至 2026-10 · 数据截至 2026-10-15
+      <span class="demo-badge">安全 KPI · Snowflake / 其余为示例数据</span><br>
+      统计时间：<span id="safety-period">{{ safety.start|date:"Y-m-d H:i" }} 至 {{ safety.end|date:"Y-m-d H:i" }}</span>
     </div>
   </div>
 
   <!-- KPI 卡片行 -->
   <div class="kpi-row">
-    <div class="kpi-card" style="--kpi-color:#34d97e">
-      <div class="kpi-tag"><span class="kpi-letter">S</span>连续安全生产</div>
-      <div class="kpi-value">187<span class="unit">天</span></div>
-      <div class="kpi-delta flat">本月安全事故 1 起（轻微）</div>
+    <div class="kpi-card" id="safety-kpi" data-url="{% url 'briefing_safety_data' %}" aria-busy="{% if safety.loading %}true{% else %}false{% endif %}" style="--kpi-color:#34d97e">
+      <div class="safety-summary">
+        <div class="kpi-tag"><span class="kpi-letter">S</span>安全Jidoka统计</div>
+        <div class="kpi-value"><span id="safety-reported">{% if safety.available %}{{ safety.reported }}{% else %}--{% endif %}</span><span class="unit">起</span></div>
+      </div>
+      <div class="kpi-delta flat safety-status" aria-live="polite">
+        <div id="safety-details">
+          {% for area in safety.areas %}
+          <div class="safety-area-row" data-label="{{ area.label }}">
+            <span class="safety-area-name">{{ area.label }}</span>
+            <span class="safety-area-metrics">新增 <strong class="safety-area-reported">{% if safety.available %}{{ area.reported }}{% else %}--{% endif %}</strong> 起，完成 <strong class="safety-area-completed">{% if safety.available %}{{ area.completed }}{% else %}--{% endif %}</strong> 起</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
     </div>
     <div class="kpi-card" style="--kpi-color:#409cff">
       <div class="kpi-tag"><span class="kpi-letter">Q</span>一次合格率</div>
@@ -64,8 +75,7 @@
     <div class="card"><div class="chart-container" id="chartCost" data-chart="true"></div></div>
     <div class="card"><div class="chart-container" id="chartRadar" data-chart="true"></div></div>
   </div>
-
-  <div class="footer-note">※ 本页所有数值均为演示用示例数据，非真实生产数据；接入真实数据时直接替换页面内 data 对象即可</div>
+  
 </div>
 {% endblock %}
 

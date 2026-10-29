@@ -1,3 +1,15 @@
+# 早会安全统计
+
+- `/briefing/` 安全 KPI 使用 `snowflake` 连接，只读查询 `PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES`，不需要模型或迁移。其余 KPI 和图表仍为示例数据。
+- 安全卡片顶部为所有配置区域的出现总数，下方按配置顺序逐行显示各区域的出现和完成数量；查询按区域分组，无匹配记录的区域补 0。`SAFETY_AREA_LABELS` 可维护显示简称，当前分别为 Weaving、Dyeing、Finishing；新增区域未配置简称时显示原始区域名。
+- 页面先渲染，不等待 Snowflake；卡片通过 `GET /briefing/safety-data/` 单独加载。成功结果由 Django 默认缓存保存 60 秒（默认进程内缓存，各进程独立），按日期、站点、区域、类型和来源时区区分；失败返回 503，不缓存失败结果。数据最多存在约 60 秒缓存延迟，不会因跨日或修改站点、区域、类型误用旧缓存。
+- 前端等待 35 秒后结束等待；加载中、失败或超时时保留 `--` 占位，不显示状态提示和重试按钮，刷新页面可重新加载。只影响安全卡片，不阻塞页面和图表。连接配置限制登录重试 10 秒、网络重试 15 秒、Socket 等待 10 秒、查询执行 20 秒及排队 10 秒。这些为分阶段限制，并非整个请求的硬性总超时；浏览器终止等待不等于立即取消数据库执行。
+- 站点在 `apps/briefing/views.py` 顶部的 `SAFETY_SERVER_SITE_NAMES` 维护，按 `SERVER_SITE_NAME` 筛选，当前为 `china^907371`。区域在相邻的 `SAFETY_AREA_CODES` 维护，当前包含 `Weaving Process`、`Dyeing Process`、`ACX Finishing`；类型在 `SAFETY_DISPATCH_TYPE_CODES` 维护，当前包含 `Safety Jidoka - Unsafe Behaviors`、`Safety Jidoka - Unsafe Conditions`。每行填写一个带引号、逗号结尾的列原始值，即可增加、修改或删除筛选值。记录需同时满足站点、区域和类型列表，各列表内采用“任一匹配”，合并统计总数；任一列表为空时不查询，返回 0。修改后重启服务生效。开启按 `reported`、完成按 `completed` 独立统计，完成记录无需在同一窗口内创建；不以 `closed` 判断完成，也不将开启解释为当前未完成存量。
+- 每次加载页面按上海日历日期查询昨天 `08:31:00` 至今天 `08:30:59.999...`，SQL 使用今天 `08:31:00` 作为不包含的上界。早于今天 08:31 加载时仍使用这个固定窗口，数据可能尚未齐全。
+- 已核实这些时间列为文本，示例为 `2025-08-07T09:00:55.563`，没有时区标记。默认按上海本地时间解释，需由数据源负责人确认；若实际存储 UTC，可设置环境变量 `SNOWFLAKE_DISPATCH_TIME_ZONE=UTC`，系统转换为上海时间后统计。无法解析或为空的时间不计入对应指标。
+- `SNOWFLAKE_WAREHOUSE` 默认 `PRD_MANUFACTURING_L2L_WH`，可通过环境变量覆盖。原 `PRD_MANUFACTURING_DB` 是数据库名，不能作为该账号的有效计算仓库。
+- 查询失败显示数据暂不可用，不显示为 0；查询成功但无匹配记录显示 0。定向测试：`.\.venv\Scripts\python.exe manage.py test apps.briefing.tests --noinput`。
+
 # 页面访问权限
 
 权限管理集中在 `apps/accounts`，继续使用 Django 原生 Group / Permission。用户通过所属 Group 获取权限；视图和导航使用相同的权限标识，不按组名写死访问判断。

@@ -29,7 +29,7 @@
   }
 
   /* ===== KPI 卡片 ===== */
-  .kpi-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 20px; }
+  .kpi-row { display: grid; grid-template-columns: minmax(260px, 1.6fr) repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
   .kpi-card {
     position: relative; overflow: hidden;
     background: linear-gradient(160deg, rgba(23,48,94,.75), rgba(11,26,54,.85));
@@ -50,6 +50,34 @@
   .kpi-value { font-size: 32px; font-weight: 700; color: #f2f8ff; margin: 8px 0 2px; font-variant-numeric: tabular-nums; }
   .kpi-value .unit { font-size: 14px; font-weight: 400; color: #7d9cc9; margin-left: 4px; }
   .kpi-delta { font-size: 12px; }
+  #safety-kpi {
+    background: linear-gradient(145deg, rgba(18, 49, 47, .92), rgba(11, 26, 54, .96));
+    border-color: rgba(52, 217, 126, .28);
+  }
+  #safety-kpi::before { width: 3px; }
+  .safety-summary {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding-bottom: 12px; border-bottom: 1px solid rgba(126, 201, 168, .18);
+  }
+  #safety-kpi .kpi-tag { color: #d3e6e2; font-size: 12px; letter-spacing: 0; }
+  #safety-kpi .kpi-letter {
+    flex: 0 0 26px; background: rgba(52, 217, 126, .14); color: #76eab0;
+    border: 1px solid rgba(52, 217, 126, .3);
+  }
+  #safety-kpi .kpi-value {
+    flex: 0 0 auto; margin: 0; color: #8af0bb; font-size: 32px; line-height: 1;
+  }
+  #safety-kpi .unit { font-size: 12px; color: #94b5af; }
+  .safety-status { min-height: 102px; margin-top: 4px; line-height: 1.5; }
+  .safety-area-row {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px;
+    min-height: 34px; white-space: nowrap; font-variant-numeric: tabular-nums;
+  }
+  .safety-area-row + .safety-area-row { border-top: 1px solid rgba(145, 180, 193, .1); }
+  .safety-area-name { color: #c3d6dc; font-size: 12px; font-weight: 500; }
+  .safety-area-metrics { color: #89a5b4; font-size: 11px; }
+  .safety-area-metrics strong { margin: 0 2px; color: #edf6f7; font-size: 13px; font-weight: 600; }
+  .safety-area-metrics .safety-area-completed { color: #79dcb0; }
   .up { color: #34d97e; } .down { color: #ff6b6b; } .flat { color: #7d9cc9; }
 
   /* ===== 图表网格 ===== */
@@ -114,6 +142,7 @@
   @media (max-width: 1200px) {
     .chart-grid { grid-template-columns: repeat(2, 1fr); }
     .kpi-row { grid-template-columns: repeat(3, 1fr); }
+    #safety-kpi { grid-column: span 2; }
   }
   @media (max-width: 768px) {
     .page-wrapper { padding: 16px 12px 24px; }

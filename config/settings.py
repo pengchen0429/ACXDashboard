@@ -117,12 +117,19 @@ DATABASES = {
         'ENGINE': 'django_snowflake',
         'NAME': 'PRD_MANUFACTURING_DB',
         'SCHEMA': 'G_L2L_CONSUMPTION',
-        'WAREHOUSE': 'PRD_MANUFACTURING_DB',
+        'WAREHOUSE': os.environ.get('SNOWFLAKE_WAREHOUSE', 'PRD_MANUFACTURING_L2L_WH'),
         'USER': 'S-ALV.L2LSF-CN@AUTOLIV.COM',
         'ACCOUNT': 'yr60386.west-europe.azure',
         'OPTIONS': {
             'role': 'U-ALV-SNOWFLAKE-L2L_CHINA_CONSUMERS_RO',
             'authenticator': 'SNOWFLAKE_JWT',
+            'login_timeout': 10,
+            'network_timeout': 15,
+            'socket_timeout': 10,
+            'session_parameters': {
+                'STATEMENT_TIMEOUT_IN_SECONDS': 20,
+                'STATEMENT_QUEUED_TIMEOUT_IN_SECONDS': 10,
+            },
             'private_key_file': str(BASE_DIR / os.environ.get(
                 'SNOWFLAKE_PRIVATE_KEY_FILE',
                 'backend/S_ALV_L2LSF_CN_AUTOLIV_COM_RSA_KEY_P8.p8',
@@ -130,6 +137,9 @@ DATABASES = {
         },
     },
 }
+
+
+SNOWFLAKE_DISPATCH_TIME_ZONE = os.environ.get('SNOWFLAKE_DISPATCH_TIME_ZONE', 'Asia/Shanghai')
 
 
 # Password validation
