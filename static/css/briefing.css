@@ -22,6 +22,29 @@
   }
   .dash-sub { font-size: 12px; color: #7d9cc9; margin-top: 4px; letter-spacing: 1px; }
   .dash-meta { text-align: right; font-size: 13px; color: #9db8e0; line-height: 1.7; }
+  .safety-time-filter {
+    display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap;
+    gap: 8px 12px; margin-top: 8px; max-width: 100%; text-align: left;
+  }
+  .safety-time-heading { color: #a7bfce; font-size: 12px; white-space: nowrap; }
+  .safety-time-fields { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+  .safety-time-field { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; }
+  .safety-time-field input {
+    box-sizing: border-box; width: 218px; max-width: 100%; min-width: 0; height: 34px;
+    padding: 5px 8px; border: 1px solid rgba(112, 161, 197, .35); border-radius: 4px;
+    background: #0c2036; color: #e2edf4; color-scheme: dark; font: inherit;
+  }
+  .safety-time-actions { display: flex; align-items: center; gap: 6px; }
+  .safety-time-actions button {
+    height: 34px; padding: 0 12px; border: 1px solid rgba(112, 161, 197, .35);
+    border-radius: 4px; background: transparent; color: #b6cbd8; font: inherit;
+    font-size: 12px; white-space: nowrap; cursor: pointer;
+  }
+  .safety-time-actions .safety-time-query { background: #74dfac; border-color: #74dfac; color: #102b25; }
+  .safety-time-actions button:hover { border-color: #a4d5c1; }
+  .safety-time-field input:focus-visible, .safety-time-actions button:focus-visible {
+    outline: 2px solid #74dfac; outline-offset: 2px;
+  }
   .demo-badge {
     display: inline-block; padding: 2px 10px; border-radius: 20px;
     background: rgba(250,200,88,.14); border: 1px solid rgba(250,200,88,.5);
@@ -29,7 +52,7 @@
   }
 
   /* ===== KPI 卡片 ===== */
-  .kpi-row { display: grid; grid-template-columns: minmax(260px, 1.6fr) repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
+  .kpi-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
   .kpi-card {
     position: relative; overflow: hidden;
     background: linear-gradient(160deg, rgba(23,48,94,.75), rgba(11,26,54,.85));
@@ -70,14 +93,16 @@
   #safety-kpi .unit { font-size: 12px; color: #94b5af; }
   .safety-status { min-height: 102px; margin-top: 4px; line-height: 1.5; }
   .safety-area-row {
-    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px;
-    min-height: 34px; white-space: nowrap; font-variant-numeric: tabular-nums;
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 8px;
+    min-height: 34px; padding: 6px 0; font-variant-numeric: tabular-nums;
   }
   .safety-area-row + .safety-area-row { border-top: 1px solid rgba(145, 180, 193, .1); }
   .safety-area-name { color: #c3d6dc; font-size: 12px; font-weight: 500; }
-  .safety-area-metrics { color: #89a5b4; font-size: 11px; }
+  .safety-area-metrics { display: flex; flex-wrap: wrap; gap: 2px 4px; min-width: 0; color: #89a5b4; font-size: 11px; }
+  .safety-area-metric { white-space: nowrap; }
   .safety-area-metrics strong { margin: 0 2px; color: #edf6f7; font-size: 13px; font-weight: 600; }
   .safety-area-metrics .safety-area-completed { color: #79dcb0; }
+  .safety-area-metrics .safety-area-unclosed { color: #fac858; }
   .up { color: #34d97e; } .down { color: #ff6b6b; } .flat { color: #7d9cc9; }
 
   /* ===== 图表网格 ===== */
@@ -150,4 +175,10 @@
     .kpi-row { grid-template-columns: repeat(2, 1fr); }
     .dash-title { font-size: 19px; }
     .chart-container { height: 300px; }
+    .dash-meta { width: 100%; max-width: 100%; }
+    .safety-time-filter { justify-content: flex-start; }
+    .safety-time-fields { display: grid; width: 100%; }
+    .safety-time-field { display: grid; grid-template-columns: 28px minmax(0, 1fr); }
+    .safety-time-field input { width: 100%; }
+    .safety-time-actions { margin-left: auto; }
   }

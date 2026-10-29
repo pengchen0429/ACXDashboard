@@ -1,14 +1,16 @@
 # 早会安全统计
 
 - `/briefing/` 安全 KPI 使用 `snowflake` 连接，只读查询 `PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES`，不需要模型或迁移。其余 KPI 和图表仍为示例数据。
-- 安全卡片顶部为所有配置区域的出现总数，下方按配置顺序逐行显示各区域的出现和完成数量；查询按区域分组，无匹配记录的区域补 0。`SAFETY_AREA_LABELS` 可维护显示简称，当前分别为 Weaving、Dyeing、Finishing；新增区域未配置简称时显示原始区域名。
-- 页面先渲染，不等待 Snowflake；卡片通过 `GET /briefing/safety-data/` 单独加载。成功结果由 Django 默认缓存保存 60 秒（默认进程内缓存，各进程独立），按日期、站点、区域、类型和来源时区区分；失败返回 503，不缓存失败结果。数据最多存在约 60 秒缓存延迟，不会因跨日或修改站点、区域、类型误用旧缓存。
+- 安全卡片顶部为所有配置区域的新增总数，下方按配置顺序逐行显示各区域的新增、完成和未关闭数量；查询按区域分组，无匹配记录的区域补 0。`SAFETY_AREA_LABELS` 可维护显示简称，当前分别为 Weaving、Dyeing、Finishing；新增区域未配置简称时显示原始区域名。
+- 页面先渲染，不等待 Snowflake；卡片通过 `GET /briefing/safety-data/` 单独加载。每次请求都查询 Snowflake，不复用原有 60 秒结果缓存，避免“当前未关闭”使用旧快照；失败返回 503。未关闭的截止时刻为本次请求开始时的上海时间，接口通过 `unclosed_as_of` 返回；页面打开、点击“查询”或“恢复默认”时更新，不持续自动刷新。数据源本身的同步延迟仍可能影响实时性。
 - 前端等待 35 秒后结束等待；加载中、失败或超时时保留 `--` 占位，不显示状态提示和重试按钮，刷新页面可重新加载。只影响安全卡片，不阻塞页面和图表。连接配置限制登录重试 10 秒、网络重试 15 秒、Socket 等待 10 秒、查询执行 20 秒及排队 10 秒。这些为分阶段限制，并非整个请求的硬性总超时；浏览器终止等待不等于立即取消数据库执行。
-- 站点在 `apps/briefing/views.py` 顶部的 `SAFETY_SERVER_SITE_NAMES` 维护，按 `SERVER_SITE_NAME` 筛选，当前为 `china^907371`。区域在相邻的 `SAFETY_AREA_CODES` 维护，当前包含 `Weaving Process`、`Dyeing Process`、`ACX Finishing`；类型在 `SAFETY_DISPATCH_TYPE_CODES` 维护，当前包含 `Safety Jidoka - Unsafe Behaviors`、`Safety Jidoka - Unsafe Conditions`。每行填写一个带引号、逗号结尾的列原始值，即可增加、修改或删除筛选值。记录需同时满足站点、区域和类型列表，各列表内采用“任一匹配”，合并统计总数；任一列表为空时不查询，返回 0。修改后重启服务生效。开启按 `reported`、完成按 `completed` 独立统计，完成记录无需在同一窗口内创建；不以 `closed` 判断完成，也不将开启解释为当前未完成存量。
-- 每次加载页面按上海日历日期查询昨天 `08:31:00` 至今天 `08:30:59.999...`，SQL 使用今天 `08:31:00` 作为不包含的上界。早于今天 08:31 加载时仍使用这个固定窗口，数据可能尚未齐全。
-- 已核实这些时间列为文本，示例为 `2025-08-07T09:00:55.563`，没有时区标记。默认按上海本地时间解释，需由数据源负责人确认；若实际存储 UTC，可设置环境变量 `SNOWFLAKE_DISPATCH_TIME_ZONE=UTC`，系统转换为上海时间后统计。无法解析或为空的时间不计入对应指标。
+- 站点在 `apps/briefing/views.py` 顶部的 `SAFETY_SERVER_SITE_NAMES` 维护，按 `SERVER_SITE_NAME` 筛选，当前为 `china^907371`。区域在相邻的 `SAFETY_AREA_CODES` 维护，当前包含 `Weaving Process`、`Dyeing Process`、`ACX Finishing`；类型在 `SAFETY_DISPATCH_TYPE_CODES` 维护，当前包含 `Safety Jidoka - Unsafe Behaviors`、`Safety Jidoka - Unsafe Conditions`。每行填写一个带引号、逗号结尾的列原始值，即可增加、修改或删除筛选值。记录需同时满足站点、区域和类型列表，各列表内采用“任一匹配”，合并统计总数；任一列表为空时不查询，返回 0。修改后重启服务生效。
+- 新增：`reported` 位于所选时间范围内。完成：同一条记录的 `reported` 和 `completed` 都位于该范围内，因此之前开启、本期完成的记录不计入本期完成。未关闭：不受所选时间范围限制，统计全部历史中 `reported` 不晚于本次请求截止时刻，且 `closed` 为空、空白，或关闭时间晚于该截止时刻的记录；已经完成但尚未关闭仍计入。不能用“新增减完成”得到未关闭数。三个指标均按视图行数计数，不按工单 ID 去重。
+- 每次打开或刷新页面，时间输入框按上海日历日期默认选择昨天 `08:31` 至今天 `08:30`，不保存上次选择。可修改开始、结束时间后点击“查询”，或点击“恢复默认”恢复本次打开时的默认范围并查询；只影响安全统计，其他示例 KPI 和图表不变。早于今天 08:31 打开时仍使用该默认窗口，数据可能尚未齐全。
+- 接口可传 `start_time`、`end_time`，格式均为 `YYYY-MM-DDTHH:MM`（上海本地时间），例如 `GET /briefing/safety-data/?start_time=2026-10-01T08:31&end_time=2026-10-02T08:30`。两项不传时使用默认窗口；自选时必须同时提供，开始不能晚于结束，否则返回 400，不访问 Snowflake。结束时间包含整分钟，SQL 上界为结束时间加一分钟且不包含该上界；同一分钟的起止时间表示统计该完整分钟。连续查询会终止前端上一请求的等待，防止旧结果覆盖新选择。
+- 已核实这些时间列为文本，示例为 `2025-08-07T09:00:55.563`，没有时区标记。默认按上海本地时间解释，需由数据源负责人确认；若实际存储 UTC，可设置环境变量 `SNOWFLAKE_DISPATCH_TIME_ZONE=UTC`，系统转换为上海时间后统计。无法解析或为空的开启、完成时间不计入对应指标；非空但无法解析的关闭时间不会被当作“未关闭”，避免把异常值误算为待关闭。
 - `SNOWFLAKE_WAREHOUSE` 默认 `PRD_MANUFACTURING_L2L_WH`，可通过环境变量覆盖。原 `PRD_MANUFACTURING_DB` 是数据库名，不能作为该账号的有效计算仓库。
-- 查询失败显示数据暂不可用，不显示为 0；查询成功但无匹配记录显示 0。定向测试：`.\.venv\Scripts\python.exe manage.py test apps.briefing.tests --noinput`。
+- 查询失败保留 `--`，不显示为 0；查询成功但无匹配记录显示 0。定向测试：`.\.venv\Scripts\python.exe manage.py test apps.briefing.tests --noinput`。
 
 # 页面访问权限
 

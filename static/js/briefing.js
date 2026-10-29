@@ -3,33 +3,52 @@
   if (!card) return;
   var reported = document.getElementById('safety-reported');
   var details = document.getElementById('safety-details');
-  var period = document.getElementById('safety-period');
+  var form = document.getElementById('safety-time-filter');
+  var startInput = document.getElementById('safety-start');
+  var endInput = document.getElementById('safety-end');
+  var defaultButton = document.getElementById('safety-time-default');
+  var activeController = null;
+
+  function validateRange() {
+    endInput.setCustomValidity(startInput.value && endInput.value &&
+      startInput.value > endInput.value ? '结束时间不能早于开始时间' : '');
+  }
 
   async function loadSafety() {
+    validateRange();
+    if (!form.reportValidity()) return;
+    if (activeController) activeController.abort();
     var controller = new AbortController();
+    activeController = controller;
     var timer = setTimeout(function() { controller.abort(); }, 35000);
+    var url = new URL(card.dataset.url, window.location.href);
+    url.searchParams.set('start_time', startInput.value);
+    url.searchParams.set('end_time', endInput.value);
     card.setAttribute('aria-busy', 'true');
     reported.textContent = '--';
-    details.querySelectorAll('.safety-area-reported, .safety-area-completed').forEach(function(value) {
+    details.querySelectorAll('.safety-area-reported, .safety-area-completed, .safety-area-unclosed').forEach(function(value) {
       value.textContent = '--';
     });
     try {
-      var response = await fetch(card.dataset.url, {
+      var response = await fetch(url, {
         signal: controller.signal,
         credentials: 'same-origin',
         cache: 'no-store'
       });
       if (!response.ok) throw new Error('Safety request failed');
       var result = await response.json();
+      if (activeController !== controller) return;
       if (!result.available || !Number.isInteger(result.reported) || result.reported < 0 ||
           !Number.isInteger(result.completed) || result.completed < 0 ||
+          !Number.isInteger(result.unclosed) || result.unclosed < 0 ||
           !Array.isArray(result.areas)) {
         throw new Error('Invalid safety response');
       }
       var rows = result.areas.map(function(area) {
         if (typeof area.label !== 'string' ||
             !Number.isInteger(area.reported) || area.reported < 0 ||
-            !Number.isInteger(area.completed) || area.completed < 0) {
+            !Number.isInteger(area.completed) || area.completed < 0 ||
+            !Number.isInteger(area.unclosed) || area.unclosed < 0) {
           throw new Error('Invalid area response');
         }
         var row = document.createElement('div');
@@ -40,29 +59,47 @@
         name.textContent = area.label;
         var metrics = document.createElement('span');
         metrics.className = 'safety-area-metrics';
-        var areaReported = document.createElement('strong');
-        areaReported.className = 'safety-area-reported';
-        areaReported.textContent = area.reported;
-        var areaCompleted = document.createElement('strong');
-        areaCompleted.className = 'safety-area-completed';
-        areaCompleted.textContent = area.completed;
-        metrics.append('新增 ', areaReported, ' 起，完成 ', areaCompleted, ' 起');
+        [
+          {key: 'reported', label: '新增', suffix: ' 起，'},
+          {key: 'completed', label: '完成', suffix: ' 起，'},
+          {key: 'unclosed', label: '未关闭', suffix: ' 起'}
+        ].forEach(function(metric) {
+          var group = document.createElement('span');
+          group.className = 'safety-area-metric';
+          var value = document.createElement('strong');
+          value.className = 'safety-area-' + metric.key;
+          value.textContent = area[metric.key];
+          group.append(metric.label + ' ', value, metric.suffix);
+          metrics.append(group);
+        });
         row.append(name, ' ', metrics);
         return row;
       });
-      period.textContent = result.start.slice(0, 16).replace('T', ' ') + ' 至 ' +
-        result.end.slice(0, 16).replace('T', ' ');
       reported.textContent = result.reported;
       details.replaceChildren.apply(details, rows);
     } catch (error) {
+      if (activeController !== controller) return;
       reported.textContent = '--';
       console.warn('Unable to load safety counts', error);
     } finally {
       clearTimeout(timer);
-      card.setAttribute('aria-busy', 'false');
+      if (activeController === controller) {
+        card.setAttribute('aria-busy', 'false');
+        activeController = null;
+      }
     }
   }
 
+  form.addEventListener('submit', function(event) {
+    event.preventDefault();
+    loadSafety();
+  });
+  startInput.addEventListener('input', validateRange);
+  endInput.addEventListener('input', validateRange);
+  defaultButton.addEventListener('click', function() {
+    form.reset();
+    loadSafety();
+  });
   loadSafety();
 })();
 

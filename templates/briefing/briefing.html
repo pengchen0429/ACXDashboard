@@ -22,7 +22,23 @@
     </div>
     <div class="dash-meta">
       <span class="demo-badge">安全 KPI · Snowflake / 其余为示例数据</span><br>
-      统计时间：<span id="safety-period">{{ safety.start|date:"Y-m-d H:i" }} 至 {{ safety.end|date:"Y-m-d H:i" }}</span>
+      <form id="safety-time-filter" class="safety-time-filter" aria-label="统计时间筛选">
+        <span class="safety-time-heading">统计时间</span>
+        <div class="safety-time-fields">
+          <label class="safety-time-field" for="safety-start">
+            <span>开始</span>
+            <input id="safety-start" name="start_time" type="datetime-local" step="60" required aria-label="开始时间" value="{{ safety.start|date:'Y-m-d' }}T{{ safety.start|date:'H:i' }}">
+          </label>
+          <label class="safety-time-field" for="safety-end">
+            <span>结束</span>
+            <input id="safety-end" name="end_time" type="datetime-local" step="60" required aria-label="结束时间" value="{{ safety.end|date:'Y-m-d' }}T{{ safety.end|date:'H:i' }}">
+          </label>
+        </div>
+        <div class="safety-time-actions">
+          <button type="submit" class="safety-time-query">查询</button>
+          <button type="button" id="safety-time-default">恢复默认</button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -38,7 +54,11 @@
           {% for area in safety.areas %}
           <div class="safety-area-row" data-label="{{ area.label }}">
             <span class="safety-area-name">{{ area.label }}</span>
-            <span class="safety-area-metrics">新增 <strong class="safety-area-reported">{% if safety.available %}{{ area.reported }}{% else %}--{% endif %}</strong> 起，完成 <strong class="safety-area-completed">{% if safety.available %}{{ area.completed }}{% else %}--{% endif %}</strong> 起</span>
+            <span class="safety-area-metrics">
+              <span class="safety-area-metric">新增 <strong class="safety-area-reported">{% if safety.available %}{{ area.reported }}{% else %}--{% endif %}</strong> 起，</span>
+              <span class="safety-area-metric">完成 <strong class="safety-area-completed">{% if safety.available %}{{ area.completed }}{% else %}--{% endif %}</strong> 起，</span>
+              <span class="safety-area-metric">未关闭 <strong class="safety-area-unclosed">{% if safety.available %}{{ area.unclosed }}{% else %}--{% endif %}</strong> 起</span>
+            </span>
           </div>
           {% endfor %}
         </div>
