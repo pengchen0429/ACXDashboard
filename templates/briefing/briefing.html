@@ -21,7 +21,7 @@
       <div class="dash-sub">SAFETY 安全 · QUALITY 质量 · DELIVERY 交付 · COST 成本 · MORALE 士气</div>
     </div>
     <div class="dash-meta">
-      <span class="demo-badge">安全 KPI · Snowflake / 其余为示例数据</span><br>
+      <span class="demo-badge">安全数据 · Snowflake / 其余为示例数据</span><br>
       <form id="safety-time-filter" class="safety-time-filter" aria-label="统计时间筛选">
         <span class="safety-time-heading">统计时间</span>
         <div class="safety-time-fields">
@@ -88,7 +88,17 @@
 
   <!-- 图表网格 -->
   <div class="chart-grid">
-    <div class="card"><div class="chart-container" id="chartSafety" data-chart="true"></div></div>
+    <section class="card safety-chart-card" aria-labelledby="safety-chart-title">
+      <header class="safety-chart-header">
+        <h2 id="safety-chart-title">S · 安全 Jidoka 数量</h2>
+      </header>
+      <div id="chartSafety"
+           class="chart-container"
+           data-chart="true"
+           data-url="{% url 'briefing_safety_data' %}"
+           role="img"
+           aria-label="织染整安全 Jidoka 新增数量分组趋势柱状图"></div>
+    </section>
     <div class="card"><div class="chart-container" id="chartPareto" data-chart="true"></div></div>
     <div class="card"><div class="chart-container" id="chartFpy" data-chart="true"></div></div>
     <div class="card"><div class="chart-container" id="chartDelivery" data-chart="true"></div></div>

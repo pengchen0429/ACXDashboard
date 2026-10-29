@@ -24,6 +24,17 @@
     var url = new URL(card.dataset.url, window.location.href);
     url.searchParams.set('start_time', startInput.value);
     url.searchParams.set('end_time', endInput.value);
+    url.searchParams.set('include_trend', '1');
+    updateDemoCharts(startInput.value, endInput.value);
+    var chartElement = document.getElementById('chartSafety');
+    chartElement.dataset.startTime = startInput.value;
+    chartElement.dataset.endTime = endInput.value;
+    safetyChart.setOption({
+      xAxis: {data: []}, series: (safetyChart.getOption().series || []).map(function(series) {
+        return {id: series.id, data: []};
+      }),
+      graphic: [{id: 'safety-chart-placeholder', type: 'text', left: 'center', top: 'middle', invisible: false, style: {text: '--', fill: '#9db8e0', fontSize: 18}}]
+    });
     card.setAttribute('aria-busy', 'true');
     reported.textContent = '--';
     details.querySelectorAll('.safety-area-reported, .safety-area-completed, .safety-area-unclosed').forEach(function(value) {
@@ -77,6 +88,7 @@
       });
       reported.textContent = result.reported;
       details.replaceChildren.apply(details, rows);
+      updateSafetyTrend(result.trend);
     } catch (error) {
       if (activeController !== controller) return;
       reported.textContent = '--';
@@ -100,7 +112,7 @@
     form.reset();
     loadSafety();
   });
-  loadSafety();
+  queueMicrotask(loadSafety);
 })();
 
 var isMobile = window.innerWidth <= 768;
@@ -108,8 +120,6 @@ var isMobile = window.innerWidth <= 768;
 /* ================= 示例数据（可整体替换为真实数据） ================= */
 var data = {
   months: ['25-11','25-12','26-01','26-02','26-03','26-04','26-05','26-06','26-07','26-08','26-09','26-10'],
-  accidents: [1,0,2,1,0,1,0,0,1,0,0,1],
-  hazardFixRate: [92,95,88,94,97,93,98,99,95,98,100,97],
   defectTypes: ['尺寸超差','外观划伤','焊接缺陷','装配错位','包装破损','其他'],
   defectCounts: [42,31,18,12,7,5],
   fpy: [94.2,94.8,93.5,95.1,95.6,95.0,96.2,96.5,95.8,96.8,97.1,97.4],
@@ -154,39 +164,100 @@ function initChart(id, option) {
   return c;
 }
 
-/* ================= S 安全：事故起数 + 隐患整改率 ================= */
-initChart('chartSafety', {
-  title: baseTitle('S · 安全事故与隐患整改趋势'),
-  tooltip: Object.assign({ trigger: 'axis' }, TIP, {
-    formatter: function(params) {
-      if (!Array.isArray(params)) return '';
-      var s = params[0].axisValue + '<br/>';
-      params.forEach(function(p) {
-        if (p.componentType !== 'series') return;
-        if (p.seriesName === '隐患整改率') s += p.marker + p.seriesName + ': ' + Number(p.value).toFixed(0) + '%<br/>';
-        else s += p.marker + p.seriesName + ': ' + Number(p.value).toFixed(0) + ' 起<br/>';
-      });
-      return s;
-    }
-  }),
-  legend: { bottom: 0, left: 'center', textStyle: AX, itemWidth: 14 },
-  grid: { top: isMobile ? '14%' : '16%', bottom: '18%', left: '4%', right: '4%', containLabel: true },
-  xAxis: { type: 'category', data: data.months, axisLabel: AX, axisLine: { lineStyle: { color: 'rgba(88,140,220,0.3)' } } },
-  yAxis: [
-    { type: 'value', name: '事故(起)', nameTextStyle: { color: '#7d9cc9', fontSize: 10 }, minInterval: 1, axisLabel: AX, splitLine: SPLIT },
-    { type: 'value', name: '整改率(%)', nameTextStyle: { color: '#7d9cc9', fontSize: 10 }, min: 80, max: 104, axisLabel: AX, splitLine: { show: false } }
-  ],
-  series: [
-    { name: '安全事故起数', type: 'bar', yAxisIndex: 0, barMaxWidth: 16,
-      itemStyle: { color: '#34d97e', borderRadius: [3,3,0,0] },
-      label: { show: false },
-      data: data.accidents },
-    { name: '隐患整改率', type: 'line', yAxisIndex: 1, smooth: true, symbol: 'circle', symbolSize: 5,
-      itemStyle: { color: '#fac858' }, lineStyle: { width: 2 },
-      label: { show: false },
-      data: data.hazardFixRate }
-  ]
+var safetyChart = initChart('chartSafety', {
+  tooltip: Object.assign({ trigger: 'axis', valueFormatter: function(value) { return value + ' 起'; } }, TIP),
+  legend: {bottom: 0, left: 'center', textStyle: AX, itemWidth: 12, itemHeight: 8},
+  grid: { top: 26, bottom: 40, left: 12, right: 12, containLabel: true },
+  xAxis: { type: 'category', data: [], axisLabel: Object.assign({}, AX, {hideOverlap: true}), axisLine: { lineStyle: { color: 'rgba(88,140,220,0.3)' } } },
+  yAxis: { type: 'value', name: '新增(起)', min: 0, minInterval: 1, nameTextStyle: { color: '#7d9cc9', fontSize: 10 }, axisLabel: AX, splitLine: SPLIT },
+  graphic: [{id: 'safety-chart-placeholder', type: 'text', left: 'center', top: 'middle', style: {text: '--', fill: '#9db8e0', fontSize: 18}}],
+  series: []
 });
+
+function updateSafetyTrend(trend) {
+  if (!trend || !trend.available || !Array.isArray(trend.points) || !Array.isArray(trend.areas) ||
+      !['day', 'month', 'year'].includes(trend.granularity) ||
+      trend.points.some(function(point) {
+        return typeof point.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(point.date) ||
+          !Number.isInteger(point.reported) || point.reported < 0;
+      }) || trend.areas.some(function(area) {
+        return typeof area.code !== 'string' || typeof area.label !== 'string' ||
+          !Array.isArray(area.points) || area.points.length !== trend.points.length ||
+          area.points.some(function(point, index) {
+            return point.date !== trend.points[index].date || !Number.isInteger(point.reported) || point.reported < 0;
+          });
+      })) {
+    console.warn('Unable to load safety trend');
+    return;
+  }
+  var colors = {'Weaving Process': '#34d97e', 'Dyeing Process': '#409cff', 'ACX Finishing': '#fac858'};
+  var palette = ['#34d97e', '#409cff', '#fac858', '#ff9f43', '#5ed4dd'];
+  safetyChart.setOption({
+    graphic: [{id: 'safety-chart-placeholder', invisible: true}],
+    legend: {data: trend.areas.map(function(area) { return area.label; })},
+    xAxis: {data: trend.points.map(function(point) {
+      return point.date.slice(0, trend.granularity === 'year' ? 4 : trend.granularity === 'month' ? 7 : 10);
+    })},
+    series: trend.areas.map(function(area, index) {
+      return {
+        id: area.code, name: area.label, type: 'bar', barMaxWidth: 22,
+        itemStyle: {color: colors[area.code] || palette[index % palette.length], borderRadius: [3,3,0,0]},
+        label: {
+          show: trend.points.length <= 14, position: 'top', color: '#d7e6ff', fontSize: 10,
+          formatter: function(params) { return params.value === 0 ? '' : String(params.value); }
+        },
+        data: area.points.map(function(point) { return point.reported; })
+      };
+    })
+  }, {replaceMerge: ['series']});
+}
+
+function updateDemoCharts(start, end) {
+  var firstMonth = start.slice(0, 7);
+  var lastMonth = end.slice(0, 7);
+  var indices = data.months.map(function(month, index) {
+    var key = '20' + month.slice(0, 2) + '-' + month.slice(3);
+    return key >= firstMonth && key <= lastMonth ? index : -1;
+  }).filter(function(index) { return index >= 0; });
+  var snapshotMonth = '20' + data.months[data.months.length - 1];
+  var hasSnapshot = snapshotMonth >= firstMonth && snapshotMonth <= lastMonth;
+  function selected(values) {
+    return indices.map(function(index) { return values[index]; });
+  }
+  function apply(id, option, available) {
+    var element = document.getElementById(id);
+    element.dataset.startTime = start;
+    element.dataset.endTime = end;
+    option.graphic = (option.graphic || []).concat([{
+      id: 'period-placeholder', type: 'text', left: 'center', top: 'middle', invisible: available,
+      style: {text: '--', fill: '#9db8e0', fontSize: 18}
+    }]);
+    echarts.getInstanceByDom(element).setOption(option);
+  }
+  apply('chartFpy', {
+    xAxis: {data: selected(data.months)}, series: [{data: selected(data.fpy)}]
+  }, indices.length > 0);
+  apply('chartDelivery', {
+    xAxis: {data: selected(data.months)},
+    series: [{data: selected(data.output)}, {data: selected(data.otd)}]
+  }, indices.length > 0);
+  apply('chartPareto', {
+    xAxis: {data: hasSnapshot ? data.defectTypes : []},
+    series: [{data: hasSnapshot ? data.defectCounts : []}, {data: hasSnapshot ? cumPct : []}]
+  }, hasSnapshot);
+  apply('chartCost', {
+    graphic: [{id: 'cost-total', invisible: !hasSnapshot}],
+    series: [{data: hasSnapshot ? data.cost : []}]
+  }, hasSnapshot);
+  apply('chartRadar', {
+    series: [{data: hasSnapshot ? [
+      {name: '本月实际', value: data.radarActual, itemStyle: {color: '#409cff'},
+        lineStyle: {width: 2, color: '#409cff'}, areaStyle: {color: 'rgba(64,156,255,0.25)'}},
+      {name: '月度目标', value: data.radarTarget, itemStyle: {color: '#fac858'},
+        lineStyle: {width: 2, color: '#fac858', type: 'dashed'}, areaStyle: {color: 'rgba(250,200,88,0.12)'}}
+    ] : []}]
+  }, hasSnapshot);
+}
 
 /* ================= Q 质量：缺陷帕累托 ================= */
 initChart('chartPareto', {
@@ -318,6 +389,7 @@ initChart('chartCost', {
     ? { orient: 'horizontal', bottom: 0, left: 'center', textStyle: AX, itemWidth: 12 }
     : { orient: 'vertical', right: '4%', top: 'center', textStyle: AX, itemWidth: 12 },
   graphic: [{
+    id: 'cost-total',
     type: 'text', left: isMobile ? '38%' : '32%', top: 'center',
     style: { text: '总计\n' + costTotal + ' 万元', textAlign: 'center', fill: '#e8f2ff', fontSize: isMobile ? 13 : 16, fontWeight: 600 }
   }],

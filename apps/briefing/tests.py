@@ -7,7 +7,7 @@ from django.template.loader import render_to_string
 from django.test import RequestFactory, SimpleTestCase, override_settings
 from django.utils.html import strip_tags
 
-from .views import briefing, get_safety_context, get_safety_counts, safety_data
+from .views import briefing, get_safety_context, get_safety_counts, get_safety_trend, safety_data
 
 
 @override_settings(TIME_ZONE='Asia/Shanghai', SNOWFLAKE_DISPATCH_TIME_ZONE='Asia/Shanghai')
@@ -64,6 +64,101 @@ class SafetyCountsTests(SimpleTestCase):
 			later = get_safety_counts(self.now.replace(hour=2))
 		self.assertEqual((result['reported'], result['completed'], result['unclosed']), (4, 2, 7))
 		self.assertEqual((later['reported'], later['completed'], later['unclosed']), (4, 2, 8))
+
+	def test_trend_merges_areas_and_fills_empty_days(self):
+		self.cursor.fetchall.return_value = [
+			('2026-10-28', 'Weaving Process', 4), ('2026-10-28', 'Dyeing Process', 1),
+			('2026-10-30', 'ACX Finishing', 2),
+		]
+		start = datetime(2026, 10, 28, 8, 31)
+		end = datetime(2026, 10, 30, 8, 30)
+		result = get_safety_trend(start, end)
+		self.assertTrue(result['available'])
+		self.assertEqual(result['granularity'], 'day')
+		self.assertEqual(result['points'], [
+			{'date': '2026-10-28', 'reported': 5},
+			{'date': '2026-10-29', 'reported': 0},
+			{'date': '2026-10-30', 'reported': 2},
+		])
+		self.assertEqual([area['label'] for area in result['areas']], ['Weaving', 'Dyeing', 'Finishing'])
+		self.assertEqual([[point['reported'] for point in area['points']] for area in result['areas']], [
+			[4, 0, 0], [1, 0, 0], [0, 0, 2],
+		])
+		query, params = self.cursor.execute.call_args.args
+		self.assertIn('COUNT(*)', query)
+		self.assertIn('GROUP BY period, area_code', query)
+		self.assertEqual(params[-2:], [start, datetime(2026, 10, 30, 8, 31)])
+		self.assertEqual(query.count('%s'), len(params))
+
+	def test_trend_sql_combines_areas_and_filters_site_and_boundaries(self):
+		with sqlite3.connect(':memory:') as database:
+			database.create_function('CONVERT_TIMEZONE', 3, lambda source, target, value: value)
+			database.create_function('TRY_TO_TIMESTAMP_NTZ', 1, lambda value: value)
+			database.create_function('DATE_TRUNC', 2, lambda unit, value: value[:10])
+			database.create_function('TO_CHAR', 2, lambda value, format: value)
+			database.execute('CREATE TABLE dispatch_fixture (areacode, dispatchtypecode, SERVER_SITE_NAME, reported)')
+			rows = [
+				('Weaving Process', '2026-10-28 08:31:00', 'china^907371'),
+				('Dyeing Process', '2026-10-28 09:00:00', 'china^907371'),
+				('ACX Finishing', '2026-10-28 10:00:00', 'china^907371'),
+				('Weaving Process', '2026-10-30 08:30:59', 'china^907371'),
+				('Weaving Process', '2026-10-28 08:30:59', 'china^907371'),
+				('Weaving Process', '2026-10-30 08:31:00', 'china^907371'),
+				('Weaving Process', '2026-10-28 09:00:00', 'china^928261'),
+				('Other area', '2026-10-28 09:00:00', 'china^907371'),
+			]
+			database.executemany('INSERT INTO dispatch_fixture VALUES (?, ?, ?, ?)', [
+				(area, 'Safety Jidoka - Unsafe Behaviors', site, reported)
+				for area, reported, site in rows
+			])
+			database.execute('INSERT INTO dispatch_fixture VALUES (?, ?, ?, ?)', (
+				'Weaving Process', 'Other type', 'china^907371', '2026-10-28 09:00:00',
+			))
+			def execute(query, params):
+				query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES', 'dispatch_fixture').replace('%s', '?')
+				params = [value.isoformat(' ') if isinstance(value, datetime) else value for value in params]
+				self.cursor.fetchall.return_value = database.execute(query, params).fetchall()
+			self.cursor.execute.side_effect = execute
+			result = get_safety_trend(datetime(2026, 10, 28, 8, 31), datetime(2026, 10, 30, 8, 30))
+		self.assertEqual(result['points'], [
+			{'date': '2026-10-28', 'reported': 3},
+			{'date': '2026-10-29', 'reported': 0},
+			{'date': '2026-10-30', 'reported': 1},
+		])
+		self.assertEqual([[point['reported'] for point in area['points']] for area in result['areas']], [
+			[1, 0, 1], [1, 0, 0], [1, 0, 0],
+		])
+
+	def test_trend_uses_months_or_years_for_long_ranges(self):
+		self.cursor.fetchall.return_value = []
+		for start, end, unit, length, first, last in [
+			(datetime(2025, 12, 15), datetime(2026, 4, 1), 'month', 5, '2025-12-01', '2026-04-01'),
+			(datetime(2024, 2, 29), datetime(2028, 2, 29), 'year', 5, '2024-01-01', '2028-01-01'),
+			(datetime(1, 1, 1), datetime(9999, 12, 31, 23, 58), 'year', 9999, '0001-01-01', '9999-01-01'),
+		]:
+			with self.subTest(unit=unit, start=start):
+				result = get_safety_trend(start, end)
+				self.assertEqual(result['granularity'], unit)
+				self.assertEqual(len(result['points']), length)
+				self.assertEqual(result['points'][0]['date'], first)
+				self.assertEqual(result['points'][-1]['date'], last)
+				self.assertTrue(all(point['reported'] == 0 for point in result['points']))
+
+	def test_trend_empty_configuration_does_not_query(self):
+		for name in ['SAFETY_SERVER_SITE_NAMES', 'SAFETY_AREA_CODES', 'SAFETY_DISPATCH_TYPE_CODES']:
+			with self.subTest(name=name), patch('apps.briefing.views.' + name, ()):
+				self.connections.reset_mock()
+				result = get_safety_trend(datetime(2026, 10, 28), datetime(2026, 10, 29))
+				self.connections.__getitem__.assert_not_called()
+				self.assertTrue(result['available'])
+				self.assertEqual([point['reported'] for point in result['points']], [0, 0])
+
+	def test_trend_failure_is_not_displayed_as_zero(self):
+		self.cursor.execute.side_effect = DatabaseError('unavailable')
+		with self.assertLogs('apps.briefing.views', level='ERROR'):
+			result = get_safety_trend(datetime(2026, 10, 28), datetime(2026, 10, 29))
+		self.assertFalse(result['available'])
+		self.assertEqual(result['points'], [])
 
 	def test_counts_and_exact_filters(self):
 		result = get_safety_counts(self.now)
@@ -235,6 +330,9 @@ class SafetyCountsTests(SimpleTestCase):
 		self.assertIn('data-url="/briefing/safety-data/"', page)
 		self.assertIn('aria-busy="true"', page)
 		self.assertIn('id="safety-time-filter"', page)
+		self.assertIn('id="safety-chart-title"', page)
+		self.assertNotIn('id="safety-chart-start"', page)
+		self.assertNotIn('id="safety-chart-end"', page)
 		self.assertEqual(page.count('type="datetime-local"'), 2)
 		self.assertIn('value="2026-10-28T08:31"', page)
 		self.assertIn('value="2026-10-29T08:30"', page)
@@ -299,6 +397,33 @@ class SafetyDataTests(SimpleTestCase):
 		self.counts.assert_called_with(
 			self.now, start=datetime(2026, 10, 28, 8, 31), end=datetime(2026, 10, 29, 8, 30),
 		)
+
+	def test_custom_window_is_passed_to_trend_when_requested(self):
+		trend_result = {'available': True, 'granularity': 'day', 'points': [
+			{'date': '2026-10-01', 'reported': 7},
+		]}
+		with patch('apps.briefing.views.get_safety_trend', return_value=trend_result) as trend:
+			response = self.client.get('/briefing/safety-data/', {
+				'include_trend': '1', 'start_time': '2026-10-01T07:15', 'end_time': '2026-10-03T16:45',
+			})
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.json()['trend'], trend_result)
+		trend.assert_called_once_with(datetime(2026, 10, 1, 7, 15), datetime(2026, 10, 3, 16, 45))
+
+	def test_trend_is_not_queried_when_not_requested(self):
+		with patch('apps.briefing.views.get_safety_trend') as trend:
+			response = self.client.get('/briefing/safety-data/')
+		trend.assert_not_called()
+		self.assertNotIn('trend', response.json())
+
+	def test_failed_trend_keeps_successful_kpi_counts(self):
+		with patch('apps.briefing.views.get_safety_trend', return_value={
+			'available': False, 'granularity': 'day', 'points': [],
+		}):
+			response = self.client.get('/briefing/safety-data/', {'include_trend': '1'})
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.json()['reported'], 7)
+		self.assertFalse(response.json()['trend']['available'])
 
 	def test_custom_window_is_passed_to_counts(self):
 		response = self.client.get('/briefing/safety-data/', {

@@ -126,6 +126,69 @@ GROUP BY area_code
 	return result
 
 
+def get_safety_trend(start, end):
+	days = (end.date() - start.date()).days + 1
+	granularity = 'day' if days <= 90 else 'month' if days <= 1096 else 'year'
+	result = {'available': False, 'granularity': granularity, 'points': []}
+	result['areas'] = [
+		{'code': code, 'label': SAFETY_AREA_LABELS.get(code, code), 'points': []}
+		for code in SAFETY_AREA_CODES
+	]
+	counts = {}
+	if SAFETY_SERVER_SITE_NAMES and SAFETY_AREA_CODES and SAFETY_DISPATCH_TYPE_CODES:
+		area_placeholders = ', '.join(['%s'] * len(SAFETY_AREA_CODES))
+		type_placeholders = ', '.join(['%s'] * len(SAFETY_DISPATCH_TYPE_CODES))
+		site_placeholders = ', '.join(['%s'] * len(SAFETY_SERVER_SITE_NAMES))
+		query = f'''
+WITH dispatches AS (
+	SELECT "areacode" AS area_code,
+		CONVERT_TIMEZONE(%s, 'Asia/Shanghai', TRY_TO_TIMESTAMP_NTZ("reported")) AS reported_at
+    FROM PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES
+    WHERE "areacode" IN ({area_placeholders})
+      AND "dispatchtypecode" IN ({type_placeholders})
+      AND "SERVER_SITE_NAME" IN ({site_placeholders})
+)
+SELECT TO_CHAR(DATE_TRUNC(%s, reported_at), 'YYYY-MM-DD') AS period, area_code, COUNT(*)
+FROM dispatches
+WHERE reported_at >= %s AND reported_at < %s
+GROUP BY period, area_code
+ORDER BY period, area_code
+'''
+		try:
+			with connections['snowflake'].cursor() as cursor:
+				cursor.execute(query, [
+					settings.SNOWFLAKE_DISPATCH_TIME_ZONE,
+					*SAFETY_AREA_CODES, *SAFETY_DISPATCH_TYPE_CODES, *SAFETY_SERVER_SITE_NAMES,
+					granularity, start, end + timedelta(minutes=1),
+				])
+				counts = {(period, code): int(reported) for period, code, reported in cursor.fetchall()}
+		except DatabaseError:
+			logger.exception('Unable to load briefing safety trend from Snowflake')
+			return result
+	period, last = start.date(), end.date()
+	if granularity in ('month', 'year'):
+		period, last = period.replace(day=1), last.replace(day=1)
+	if granularity == 'year':
+		period, last = period.replace(month=1), last.replace(month=1)
+	while True:
+		key = period.isoformat()
+		for area in result['areas']:
+			area['points'].append({'date': key, 'reported': counts.get((key, area['code']), 0)})
+		result['points'].append({
+			'date': key, 'reported': sum(area['points'][-1]['reported'] for area in result['areas']),
+		})
+		if period == last:
+			break
+		if granularity == 'day':
+			period += timedelta(days=1)
+		elif granularity == 'month':
+			period = period.replace(year=period.year + 1, month=1) if period.month == 12 else period.replace(month=period.month + 1)
+		else:
+			period = period.replace(year=period.year + 1)
+	result['available'] = True
+	return result
+
+
 def briefing(request):
 	return render(request, 'briefing/briefing.html', {'safety': get_safety_context()})
 
@@ -150,4 +213,6 @@ def safety_data(request):
 			}, status=400)
 	context = get_safety_context(now, start=start, end=end)
 	result = get_safety_counts(now, start=context['start'], end=context['end'])
+	if request.GET.get('include_trend') == '1' and result['available']:
+		result['trend'] = get_safety_trend(context['start'], context['end'])
 	return JsonResponse(result, status=200 if result['available'] else 503)
