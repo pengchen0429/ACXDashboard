@@ -112,7 +112,17 @@ DATABASES = {
             'driver': 'ODBC Driver 17 for SQL Server',
         },
     },
-
+    'mesaq_cnx': {
+        'ENGINE': 'mssql',
+        'NAME': 'MESAQ',  # 如果数据库名也是 MESAQ
+        'USER': 'PBI',    # 根据实际账号修改
+        'PASSWORD': 'Autoliv123',  # 根据实际密码修改
+        'HOST': '10.125.12.4',
+        'PORT': '1433',
+        'OPTIONS': {
+            'driver': 'ODBC Driver 17 for SQL Server',
+        },
+    },
     'snowflake': {
         'ENGINE': 'django_snowflake',
         'NAME': 'PRD_MANUFACTURING_DB',
