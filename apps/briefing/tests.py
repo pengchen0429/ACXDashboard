@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime, timezone as datetime_timezone
+from datetime import date, datetime, timedelta, timezone as datetime_timezone
 from unittest.mock import patch
 
 from django.db import DatabaseError
@@ -7,7 +7,393 @@ from django.template.loader import render_to_string
 from django.test import RequestFactory, SimpleTestCase, override_settings
 from django.utils.html import strip_tags
 
-from .views import briefing, get_safety_context, get_safety_counts, get_safety_trend, safety_data
+from .views import (
+	IMPROVEMENT_DISPATCH_TYPE_CODES, briefing, get_dpmu_counts, get_dpmu_trend, get_improvement_counts,
+	get_improvement_trend, get_safety_context, get_safety_counts, get_safety_trend, safety_data,
+)
+
+
+@override_settings(TIME_ZONE='Asia/Shanghai', SNOWFLAKE_DISPATCH_TIME_ZONE='Asia/Shanghai')
+class ImprovementCountsTests(SimpleTestCase):
+	def setUp(self):
+		self.now = datetime(2026, 10, 29, 1, tzinfo=datetime_timezone.utc)
+		self.start = datetime(2026, 10, 28, 8, 30)
+		self.end = datetime(2026, 10, 29, 8, 30)
+		self.connection_patch = patch('apps.briefing.views.connections')
+		self.connections = self.connection_patch.start()
+		self.addCleanup(self.connection_patch.stop)
+		self.cursor = self.connections['snowflake'].cursor.return_value.__enter__.return_value
+		self.cursor.fetchall.return_value = [('Weaving Process', 4, 2, 3)]
+
+	def test_exact_types_use_parameters_and_do_not_change_safety_types(self):
+		result = get_improvement_counts(self.now, start=self.start, end=self.end)
+		self.assertEqual(result['dispatch_types'], (
+			'Electrical down 电气故障停机',
+			'Electrical issue without breakdown 电气故障不停机',
+			'Machine Breakdown 设备停机',
+			'Machine issue without breakdown 设备故障不停机',
+		))
+		query, params = self.cursor.execute.call_args.args
+		self.assertEqual(params[6:10], list(result['dispatch_types']))
+		self.assertEqual(query.count('%s'), len(params))
+		self.assertTrue(all(value not in query for value in result['dispatch_types']))
+		self.assertEqual((result['reported'], result['completed'], result['unclosed']), (4, 2, 3))
+		self.assertEqual([area['reported'] for area in result['areas']], [4, 0, 0])
+		self.assertNotEqual(get_safety_context(self.now)['dispatch_types'], result['dispatch_types'])
+
+	def test_sql_uses_safety_counting_rules_for_all_four_types(self):
+		with sqlite3.connect(':memory:') as database:
+			database.create_function('CONVERT_TIMEZONE', 3, lambda source, target, value: value)
+			database.create_function('TRY_TO_TIMESTAMP_NTZ', 1, lambda value: value)
+			database.execute('CREATE TABLE dispatch_fixture (areacode, dispatchtypecode, SERVER_SITE_NAME, reported, completed, closed)')
+			rows = [
+				('Weaving Process', dispatch_type, 'china^907371', '2026-10-28 08:30:00', '2026-10-28 09:00:00', None)
+				for dispatch_type in IMPROVEMENT_DISPATCH_TYPE_CODES
+			]
+			rows.extend([
+				('Dyeing Process', IMPROVEMENT_DISPATCH_TYPE_CODES[0], 'china^907371', '2026-10-29 08:30:59', None, None),
+				('Finishing Process', IMPROVEMENT_DISPATCH_TYPE_CODES[0], 'china^907371', '2026-10-28 10:00:00', '2026-10-29 08:31:00', '2026-10-29 08:45:00'),
+				('Weaving Process', IMPROVEMENT_DISPATCH_TYPE_CODES[0], 'china^907371', '2026-10-01 09:00:00', '2026-10-28 10:00:00', None),
+				('Weaving Process', IMPROVEMENT_DISPATCH_TYPE_CODES[0], 'china^907371', '2026-10-28 08:29:59', None, '2026-10-28 09:00:00'),
+				('Weaving Process', IMPROVEMENT_DISPATCH_TYPE_CODES[0], 'china^907371', '2026-10-29 08:31:00', None, '2026-10-29 08:45:00'),
+				('Weaving Process', 'Safety Jidoka - Unsafe Behaviors', 'china^907371', '2026-10-28 09:00:00', None, None),
+				('Weaving Process', IMPROVEMENT_DISPATCH_TYPE_CODES[0], 'china^928261', '2026-10-28 09:00:00', None, None),
+				('Other area', IMPROVEMENT_DISPATCH_TYPE_CODES[0], 'china^907371', '2026-10-28 09:00:00', None, None),
+			])
+			database.executemany('INSERT INTO dispatch_fixture VALUES (?, ?, ?, ?, ?, ?)', rows)
+			def execute(query, params):
+				query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES', 'dispatch_fixture').replace('%s', '?')
+				params = [value.isoformat(' ') if isinstance(value, datetime) else value for value in params]
+				self.cursor.fetchall.return_value = database.execute(query, params).fetchall()
+			self.cursor.execute.side_effect = execute
+			result = get_improvement_counts(self.now, start=self.start, end=self.end)
+		self.assertEqual((result['reported'], result['completed'], result['unclosed']), (6, 4, 6))
+		self.assertEqual([(area['reported'], area['completed'], area['unclosed']) for area in result['areas']], [
+			(4, 4, 5), (1, 0, 1), (1, 0, 0),
+		])
+
+	def test_endpoint_window_cache_validation_and_failure(self):
+		with patch('apps.briefing.views.timezone.now', return_value=self.now), patch(
+			'apps.briefing.views.get_improvement_trend', return_value={'available': True, 'points': []},
+		) as trend:
+			for unused in range(2):
+				response = self.client.get('/briefing/improvement-data/', {
+					'start_time': '2026-10-28T08:30', 'end_time': '2026-10-29T08:30', 'include_trend': '1',
+				})
+				self.assertEqual(response.status_code, 200)
+				self.assertEqual(response.json()['reported'], 4)
+				self.assertTrue(response.json()['trend']['available'])
+				self.assertIn('no-store', response['Cache-Control'])
+			trend.assert_called_with(self.start, self.end)
+		self.assertEqual(self.cursor.execute.call_count, 2)
+		self.assertEqual(self.cursor.execute.call_args.args[1][-9:-7], [self.start, self.end + timedelta(minutes=1)])
+		self.cursor.reset_mock()
+		for params in [
+			{'start_time': '2026-10-28T08:30'},
+			{'start_time': 'invalid', 'end_time': '2026-10-29T08:30'},
+			{'start_time': '2026-10-30T08:30', 'end_time': '2026-10-29T08:30'},
+		]:
+			self.assertEqual(self.client.get('/briefing/improvement-data/', params).status_code, 400)
+		self.cursor.execute.assert_not_called()
+		self.assertEqual(self.client.post('/briefing/improvement-data/').status_code, 405)
+		self.cursor.execute.side_effect = DatabaseError('unavailable')
+		with self.assertLogs('apps.briefing.views', level='ERROR'):
+			response = self.client.get('/briefing/improvement-data/')
+		self.assertEqual(response.status_code, 503)
+		self.assertIsNone(response.json()['reported'])
+
+	def test_template_uses_live_improvement_endpoint_and_placeholders(self):
+		page = render_to_string('briefing/briefing.html', {'safety': get_safety_context(self.now)})
+		self.assertIn('data-url="/briefing/improvement-data/"', page)
+		self.assertIn('id="improvement-reported">--</span>', page)
+		self.assertIn('id="improvement-details"', page)
+		self.assertNotIn('126<span class="unit">件</span>', page)
+
+
+@override_settings(TIME_ZONE='Asia/Shanghai', SNOWFLAKE_DISPATCH_TIME_ZONE='Asia/Shanghai')
+class SnowflakeCutoffTests(SimpleTestCase):
+	def setUp(self):
+		self.now = datetime(2026, 1, 2, 1, tzinfo=datetime_timezone.utc)
+		self.database = sqlite3.connect(':memory:')
+		self.addCleanup(self.database.close)
+		self.database.create_function('CONVERT_TIMEZONE', 3, lambda source, target, value: value)
+		self.database.create_function('TRY_TO_TIMESTAMP_NTZ', 1, lambda value: value)
+		self.database.create_function('DATE_TRUNC', 2, lambda unit, value: value[:10])
+		self.database.create_function('TO_CHAR', 2, lambda value, format: value)
+		self.database.execute('CREATE TABLE dispatch_fixture (areacode, dispatchtypecode, SERVER_SITE_NAME, reported, completed, closed)')
+		for dispatch_type in [get_safety_context(self.now)['dispatch_types'][0], IMPROVEMENT_DISPATCH_TYPE_CODES[0]]:
+			self.database.executemany('INSERT INTO dispatch_fixture VALUES (?, ?, ?, ?, ?, ?)', [
+				('Weaving Process', dispatch_type, 'china^907371', '2025-12-31 23:59:59', '2026-01-01 01:00:00', None),
+				('Weaving Process', dispatch_type, 'china^907371', '2026-01-01 00:00:00', '2026-01-01 02:00:00', None),
+			])
+		self.connection_patch = patch('apps.briefing.views.connections')
+		self.connections = self.connection_patch.start()
+		self.addCleanup(self.connection_patch.stop)
+		self.cursor = self.connections['snowflake'].cursor.return_value.__enter__.return_value
+		def execute(query, params):
+			query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES', 'dispatch_fixture').replace('%s', '?')
+			params = [value.isoformat(' ') if isinstance(value, datetime) else value for value in params]
+			self.cursor.fetchall.return_value = self.database.execute(query, params).fetchall()
+		self.cursor.execute.side_effect = execute
+
+	def test_both_kpis_exclude_pre_2026_reports_from_every_count(self):
+		for loader in [get_safety_counts, get_improvement_counts]:
+			with self.subTest(loader=loader.__name__):
+				result = loader(self.now, start=datetime(2025, 12, 31), end=datetime(2026, 1, 1, 23, 59))
+				self.assertEqual((result['reported'], result['completed'], result['unclosed']), (1, 1, 1))
+				result = loader(self.now, start=datetime(2025, 12, 31), end=datetime(2025, 12, 31, 23, 59))
+				self.assertEqual((result['reported'], result['completed'], result['unclosed']), (0, 0, 1))
+
+	def test_trend_excludes_pre_2026_reports_and_includes_exact_cutoff(self):
+		for loader in [get_safety_trend, get_improvement_trend]:
+			with self.subTest(loader=loader.__name__):
+				result = loader(datetime(2025, 12, 31), datetime(2026, 1, 1, 23, 59))
+				self.assertTrue(result['available'])
+				self.assertEqual(result['points'], [
+					{'date': '2025-12-31', 'reported': 0}, {'date': '2026-01-01', 'reported': 1},
+				])
+
+
+class DpmuTrendTests(SimpleTestCase):
+	def setUp(self):
+		self.connection_patch = patch('apps.briefing.views.connections')
+		self.connections = self.connection_patch.start()
+		self.addCleanup(self.connection_patch.stop)
+		self.cursor = self.connections['mesaq'].cursor.return_value.__enter__.return_value
+
+	def test_shift_days_fill_gaps_and_keep_end_minute_scrap(self):
+		self.cursor.fetchall.return_value = [
+			('production', date(2026, 10, 28), 1000), ('scrap', date(2026, 10, 28), 20),
+			('scrap', date(2026, 10, 29), 5),
+		]
+		result = get_dpmu_trend(datetime(2026, 10, 28, 8, 30), datetime(2026, 10, 29, 8, 30))
+		self.assertTrue(result['available'])
+		self.assertEqual(len(result['points']), 1)
+		self.assertEqual(result['points'][0]['date'], '2026-10-28')
+		self.assertEqual(result['points'][0]['scrap'], 25)
+		self.assertAlmostEqual(float(result['points'][0]['dpmu']), 0.025)
+		query, params = self.cursor.execute.call_args.args
+		self.assertEqual(query.count('%s'), len(params))
+		self.assertEqual(params[:2], [datetime(2026, 10, 28), datetime(2026, 10, 29)])
+		self.cursor.fetchall.return_value = []
+		result = get_dpmu_trend(datetime(2026, 10, 28, 8, 30), datetime(2026, 10, 30, 8, 30))
+		self.assertEqual([point['dpmu'] for point in result['points']], [None, None])
+
+	def test_monthly_ratio_uses_totals_not_average_of_daily_ratios(self):
+		self.cursor.fetchall.return_value = [
+			('production', date(2026, 1, 1), 100), ('scrap', date(2026, 1, 1), 10),
+			('production', date(2026, 1, 2), 900), ('scrap', date(2026, 1, 2), 0),
+		]
+		result = get_dpmu_trend(datetime(2026, 1, 1, 8, 30), datetime(2026, 5, 1, 8, 30))
+		self.assertEqual(result['granularity'], 'month')
+		self.assertEqual(len(result['points']), 4)
+		self.assertAlmostEqual(float(result['points'][0]['dpmu']), 0.01)
+
+	def test_failure_returns_unavailable_without_zero_points(self):
+		self.cursor.execute.side_effect = DatabaseError('unavailable')
+		with self.assertLogs('apps.briefing.views', level='ERROR'):
+			result = get_dpmu_trend(datetime(2026, 10, 28, 8, 30), datetime(2026, 10, 29, 8, 30))
+		self.assertFalse(result['available'])
+		self.assertEqual(result['points'], [])
+
+	def test_actual_trend_sql_matches_kpi_totals(self):
+		with sqlite3.connect(':memory:') as database:
+			database.executescript('''
+CREATE TABLE tabEquipType (id, EquipType);
+CREATE TABLE tabEquipment (equipNo, xflag);
+CREATE TABLE tabWorkDayRpt (EquipNo, RecDate, DayQty);
+CREATE TABLE tabGramCode (BarCode, Remark, MyCode);
+CREATE TABLE tabDefaultRec (DefCode, BegDate, cDefine10, intVal1);
+''')
+			database.execute('INSERT INTO tabEquipType VALUES (?, ?)', (1, '织造'))
+			database.execute('INSERT INTO tabEquipment VALUES (?, ?)', ('W1', 1))
+			database.executemany('INSERT INTO tabWorkDayRpt VALUES (?, ?, ?)', [
+				('W1', '2026-10-28 00:00:00', 1000), ('W1', '2026-10-29 00:00:00', 9999),
+			])
+			database.executemany('INSERT INTO tabGramCode VALUES (?, ?, ?)', [
+				('OK', '织造不合格', '其他'), ('PM', '织造不合格', 'PM脏 PM Dirty'),
+			])
+			database.executemany('INSERT INTO tabDefaultRec VALUES (?, ?, ?, ?)', [
+				('OK', '2026-10-28 08:30:00', '织造白坯', 20),
+				('OK', '2026-10-29 08:30:59', '织造白坯', 5),
+				('OK', '2026-10-29 08:31:00', '织造白坯', 9999),
+				('PM', '2026-10-28 09:00:00', '织造白坯', 9999),
+			])
+			def execute(query, params):
+				query = query.replace('CAST(a.RecDate AS date)', 'date(a.RecDate)').replace(
+					'CAST(DATEADD(minute, -510, a.BegDate) AS date)', "date(datetime(a.BegDate, '-510 minutes'))",
+				).replace('%s', '?')
+				params = [value.isoformat(' ') if isinstance(value, datetime) else value for value in params]
+				rows = database.execute(query, params).fetchall()
+				self.cursor.fetchone.return_value = rows[0] if rows else None
+				if rows and len(rows[0]) == 3:
+					self.cursor.fetchall.return_value = [(metric, date.fromisoformat(day), quantity) for metric, day, quantity in rows]
+			self.cursor.execute.side_effect = execute
+			start, end = datetime(2026, 10, 28, 8, 30), datetime(2026, 10, 29, 8, 30)
+			counts = get_dpmu_counts(start, end)
+			trend = get_dpmu_trend(start, end)
+		self.assertEqual(sum(point['production'] for point in trend['points']), counts['production'])
+		self.assertEqual(sum(point['scrap'] for point in trend['points']), counts['scrap'])
+		self.assertEqual(trend['points'][0]['dpmu'], counts['dpmu'])
+
+
+class DpmuCountsTests(SimpleTestCase):
+	def setUp(self):
+		self.start = datetime(2026, 10, 28, 8, 31)
+		self.end = datetime(2026, 10, 29, 8, 30)
+		self.connection_patch = patch('apps.briefing.views.connections')
+		self.connections = self.connection_patch.start()
+		self.addCleanup(self.connection_patch.stop)
+		self.cursor = self.connections['mesaq'].cursor.return_value.__enter__.return_value
+		self.cursor.fetchone.return_value = (1000, 25)
+
+	def test_ratio_is_not_scaled_to_percentage_or_million(self):
+		from decimal import Decimal
+		result = get_dpmu_counts(self.start, self.end)
+		self.assertTrue(result['available'])
+		self.assertEqual(result['dpmu'], Decimal('0.025'))
+		query, params = self.cursor.execute.call_args.args
+		self.assertEqual(query.count('%s'), len(params))
+		self.assertEqual(params[:5], [datetime(2026, 10, 28), datetime(2026, 10, 29), '织造',
+			self.start, datetime(2026, 10, 29, 8, 31)])
+
+	def test_production_days_follow_0830_shift_boundary(self):
+		for start, end, first_day, after_last_day in [
+			(datetime(2026, 10, 28, 8, 30), datetime(2026, 10, 29, 8, 30), 28, 29),
+			(datetime(2026, 10, 28, 8, 31), datetime(2026, 10, 29, 8, 30), 28, 29),
+			(datetime(2026, 10, 28, 8, 29), datetime(2026, 10, 29, 8, 30), 27, 29),
+			(datetime(2026, 10, 28, 8, 30), datetime(2026, 10, 29, 8, 31), 28, 30),
+			(datetime(2026, 10, 28, 9), datetime(2026, 10, 28, 10), 28, 29),
+			(datetime(2026, 10, 28, 8, 30), datetime(2026, 10, 28, 8, 30), 28, 29),
+			(datetime(2026, 10, 27, 8, 30), datetime(2026, 10, 30, 8, 30), 27, 30),
+		]:
+			with self.subTest(start=start, end=end):
+				get_dpmu_counts(start, end)
+				params = self.cursor.execute.call_args.args[1]
+				self.assertEqual(params[:2], [datetime(2026, 10, first_day), datetime(2026, 10, after_last_day)])
+				self.assertEqual(params[3], start)
+				self.assertEqual(params[4], end + timedelta(minutes=1))
+
+	def test_sql_filters_and_time_boundaries(self):
+		with sqlite3.connect(':memory:') as database:
+			database.executescript('''
+CREATE TABLE tabEquipType (id, EquipType);
+CREATE TABLE tabEquipment (equipNo, xflag);
+CREATE TABLE tabWorkDayRpt (EquipNo, RecDate, DayQty);
+CREATE TABLE tabGramCode (BarCode, Remark, MyCode);
+CREATE TABLE tabDefaultRec (DefCode, BegDate, cDefine10, intVal1);
+''')
+			database.executemany('INSERT INTO tabEquipType VALUES (?, ?)', [(1, '织造'), (2, '染色')])
+			database.executemany('INSERT INTO tabEquipment VALUES (?, ?)', [('W1', 1), ('D1', 2)])
+			database.executemany('INSERT INTO tabWorkDayRpt VALUES (?, ?, ?)', [
+				('W1', '2026-10-28 00:00:00', 600), ('W1', '2026-10-28 00:00:00', 400),
+				('W1', '2026-10-27 23:59:59', 999), ('W1', '2026-10-29 00:00:00', 999),
+				('D1', '2026-10-28 00:00:00', 999),
+			])
+			database.executemany('INSERT INTO tabGramCode VALUES (?, ?, ?)', [
+				('OK', '织造不合格', '其他'), ('NULL', '织造不合格', None),
+				('CREEL', '织造不合格', '新接筒子架 Creels Change'),
+				('PM', '织造不合格', 'PM脏 PM Dirty'), ('OTHER', '染色不合格', '其他'),
+			])
+			database.executemany('INSERT INTO tabDefaultRec VALUES (?, ?, ?, ?)', [
+				('OK', '2026-10-28 08:31:00', category, 5)
+				for category in ['织造白坯', '10米以下', '10 米以上', '1米以下', '织造批量']
+			] + [
+				('NULL', '2026-10-29 08:30:59', '织造白坯', 5),
+				('CREEL', '2026-10-28 09:00:00', '织造白坯', 999),
+				('PM', '2026-10-28 09:00:00', '织造白坯', 999),
+				('OTHER', '2026-10-28 09:00:00', '织造白坯', 999),
+				('OK', '2026-10-28 09:00:00', '其他', 999),
+				('OK', '2026-10-28 08:30:59', '织造白坯', 999),
+				('OK', '2026-10-29 08:31:00', '织造白坯', 999),
+			])
+			def execute(query, params):
+				params = [value.isoformat(' ') if isinstance(value, datetime) else value for value in params]
+				self.cursor.fetchone.return_value = database.execute(query.replace('%s', '?'), params).fetchone()
+			self.cursor.execute.side_effect = execute
+			result = get_dpmu_counts(self.start, self.end)
+		self.assertEqual((result['production'], result['scrap']), (1000, 30))
+		self.assertAlmostEqual(float(result['dpmu']), 0.03)
+
+	def test_zero_production_and_zero_scrap(self):
+		for production, scrap, expected in [(0, 0, None), (0, 5, None), (100, 0, 0)]:
+			with self.subTest(production=production, scrap=scrap):
+				self.cursor.fetchone.return_value = (production, scrap)
+				result = get_dpmu_counts(self.start, self.end)
+				self.assertTrue(result['available'])
+				self.assertEqual(result['dpmu'], expected)
+
+	def test_database_failure_does_not_display_zero(self):
+		self.cursor.execute.side_effect = DatabaseError('unavailable')
+		with self.assertLogs('apps.briefing.views', level='ERROR'):
+			result = get_dpmu_counts(self.start, self.end)
+		self.assertFalse(result['available'])
+		self.assertIsNone(result['dpmu'])
+
+	def test_endpoint_uses_selected_range_and_is_not_cached(self):
+		for unused in range(2):
+			response = self.client.get('/briefing/dpmu-data/', {
+				'start_time': '2026-10-28T08:31', 'end_time': '2026-10-29T08:30',
+			})
+			self.assertEqual(response.status_code, 200)
+			self.assertEqual(response.json()['dpmu'], '0.025')
+			self.assertIn('no-store', response['Cache-Control'])
+		self.assertEqual(self.cursor.execute.call_count, 2)
+		self.assertEqual(self.cursor.execute.call_args.args[1][0], datetime(2026, 10, 28))
+
+	def test_endpoint_uses_default_window(self):
+		with patch('apps.briefing.views.timezone.now', return_value=datetime(
+			2026, 10, 29, 1, tzinfo=datetime_timezone.utc,
+		)), override_settings(TIME_ZONE='Asia/Shanghai'):
+			response = self.client.get('/briefing/dpmu-data/')
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(self.cursor.execute.call_args.args[1][:2], [
+			datetime(2026, 10, 28), datetime(2026, 10, 29),
+		])
+
+	def test_invalid_ranges_do_not_query(self):
+		for params in [
+			{'start_time': '0001-01-01T00:00', 'end_time': '2026-10-03T16:45'},
+			{'start_time': '2026-10-01T07:15'},
+			{'end_time': '2026-10-03T16:45'},
+			{'start_time': 'invalid', 'end_time': '2026-10-03T16:45'},
+			{'start_time': '2026-10-04T07:15', 'end_time': '2026-10-03T16:45'},
+			{'start_time': '2026-10-01T07:15', 'end_time': '9999-12-31T23:58'},
+			{'start_time': '2026-10-01T07:15', 'end_time': '9999-12-31T23:59'},
+		]:
+			with self.subTest(params=params):
+				self.assertEqual(self.client.get('/briefing/dpmu-data/', params).status_code, 400)
+		self.cursor.execute.assert_not_called()
+		self.assertEqual(self.client.post('/briefing/dpmu-data/').status_code, 405)
+
+	def test_failure_endpoint_returns_503(self):
+		self.cursor.execute.side_effect = DatabaseError('unavailable')
+		with self.assertLogs('apps.briefing.views', level='ERROR'):
+			response = self.client.get('/briefing/dpmu-data/')
+		self.assertEqual(response.status_code, 503)
+		self.assertFalse(response.json()['available'])
+		self.assertIsNone(response.json()['dpmu'])
+
+	def test_trend_is_requested_once_and_failure_preserves_kpi(self):
+		with patch('apps.briefing.views.get_dpmu_trend', return_value={
+			'available': False, 'granularity': 'day', 'points': [],
+		}) as trend:
+			response = self.client.get('/briefing/dpmu-data/', {
+				'start_time': '2026-10-28T08:31', 'end_time': '2026-10-29T08:30', 'include_trend': '1',
+			})
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.json()['dpmu'], '0.025')
+		self.assertFalse(response.json()['trend']['available'])
+		trend.assert_called_once_with(self.start, self.end)
+
+	def test_template_replaces_only_quality_kpi(self):
+		page = render_to_string('briefing/briefing.html', {'safety': get_safety_context()})
+		self.assertIn('data-url="/briefing/dpmu-data/"', page)
+		self.assertIn('id="dpmu-value" aria-live="polite">--</div>', page)
+		self.assertNotIn('97.4<span class="unit">%</span>', page)
+		self.assertIn('id="chartDpmu"', page)
+		self.assertIn('id="chartImprovement"', page)
+		self.assertNotIn('id="chartRadar"', page)
 
 
 @override_settings(TIME_ZONE='Asia/Shanghai', SNOWFLAKE_DISPATCH_TIME_ZONE='Asia/Shanghai')
@@ -24,7 +410,7 @@ class SafetyCountsTests(SimpleTestCase):
 		self.addCleanup(self.connection_patch.stop)
 		self.cursor = self.connections['snowflake'].cursor.return_value.__enter__.return_value
 		self.cursor.fetchall.return_value = [
-			('Weaving Process', 4, 3, 10), ('Dyeing Process', 2, 2, 6), ('ACX Finishing', 1, 0, 2),
+			('Weaving Process', 4, 3, 10), ('Dyeing Process', 2, 2, 6), ('Finishing Process', 1, 0, 2),
 		]
 
 	def test_window_completion_and_current_unclosed_are_separate(self):
@@ -68,7 +454,7 @@ class SafetyCountsTests(SimpleTestCase):
 	def test_trend_merges_areas_and_fills_empty_days(self):
 		self.cursor.fetchall.return_value = [
 			('2026-10-28', 'Weaving Process', 4), ('2026-10-28', 'Dyeing Process', 1),
-			('2026-10-30', 'ACX Finishing', 2),
+			('2026-10-30', 'Finishing Process', 2),
 		]
 		start = datetime(2026, 10, 28, 8, 31)
 		end = datetime(2026, 10, 30, 8, 30)
@@ -87,7 +473,7 @@ class SafetyCountsTests(SimpleTestCase):
 		query, params = self.cursor.execute.call_args.args
 		self.assertIn('COUNT(*)', query)
 		self.assertIn('GROUP BY period, area_code', query)
-		self.assertEqual(params[-2:], [start, datetime(2026, 10, 30, 8, 31)])
+		self.assertEqual(params[-3:], [start, datetime(2026, 10, 30, 8, 31), datetime(2026, 1, 1)])
 		self.assertEqual(query.count('%s'), len(params))
 
 	def test_trend_sql_combines_areas_and_filters_site_and_boundaries(self):
@@ -100,7 +486,7 @@ class SafetyCountsTests(SimpleTestCase):
 			rows = [
 				('Weaving Process', '2026-10-28 08:31:00', 'china^907371'),
 				('Dyeing Process', '2026-10-28 09:00:00', 'china^907371'),
-				('ACX Finishing', '2026-10-28 10:00:00', 'china^907371'),
+				('Finishing Process', '2026-10-28 10:00:00', 'china^907371'),
 				('Weaving Process', '2026-10-30 08:30:59', 'china^907371'),
 				('Weaving Process', '2026-10-28 08:30:59', 'china^907371'),
 				('Weaving Process', '2026-10-30 08:31:00', 'china^907371'),
@@ -179,13 +565,14 @@ class SafetyCountsTests(SimpleTestCase):
 		self.assertIn('GROUP BY area_code', query)
 		self.assertEqual(params, [
 			'Asia/Shanghai', 'Asia/Shanghai', 'Asia/Shanghai',
-			'Weaving Process', 'Dyeing Process', 'ACX Finishing',
+			'Weaving Process', 'Dyeing Process', 'Finishing Process',
 			'Safety Jidoka - Unsafe Behaviors',
 			'china^907371',
 			datetime(2026, 10, 28, 8, 31), datetime(2026, 10, 29, 8, 31),
 			datetime(2026, 10, 28, 8, 31), datetime(2026, 10, 29, 8, 31),
 			datetime(2026, 10, 28, 8, 31), datetime(2026, 10, 29, 8, 31),
 			datetime(2026, 10, 29, 9), datetime(2026, 10, 29, 9),
+			datetime(2026, 1, 1),
 		])
 
 	def test_multiple_dispatch_types_are_parameterized(self):
@@ -195,7 +582,7 @@ class SafetyCountsTests(SimpleTestCase):
 		query, params = self.cursor.execute.call_args.args
 		self.assertIn('"dispatchtypecode" IN (%s, %s)', query)
 		self.assertEqual(
-			params[3 + len(result['area_codes']):-8 - len(result['server_site_names'])],
+			params[3 + len(result['area_codes']):-9 - len(result['server_site_names'])],
 			list(dispatch_types),
 		)
 		self.assertNotIn(dispatch_types[1], query)
@@ -222,7 +609,7 @@ class SafetyCountsTests(SimpleTestCase):
 			result = get_safety_counts(self.now)
 		query, params = self.cursor.execute.call_args.args
 		self.assertIn('AND "SERVER_SITE_NAME" IN (%s, %s)', query)
-		self.assertEqual(params[-8 - len(site_names):-8], list(site_names))
+		self.assertEqual(params[-9 - len(site_names):-9], list(site_names))
 		self.assertNotIn(site_names[1], query)
 		self.assertEqual(query.count('%s'), len(params))
 		self.assertEqual(result['server_site_names'], site_names)
@@ -238,12 +625,12 @@ class SafetyCountsTests(SimpleTestCase):
 		self.assertTrue(all(area['reported'] == area['completed'] == 0 for area in result['areas']))
 
 	def test_area_counts_follow_configuration_order_and_fill_missing_with_zero(self):
-		self.cursor.fetchall.return_value = [('ACX Finishing', 1, 2, 2), ('Weaving Process', 4, 3, 10)]
+		self.cursor.fetchall.return_value = [('Finishing Process', 1, 2, 2), ('Weaving Process', 4, 3, 10)]
 		result = get_safety_counts(self.now)
 		self.assertEqual(result['areas'], [
 			{'code': 'Weaving Process', 'label': 'Weaving', 'reported': 4, 'completed': 3, 'unclosed': 10},
 			{'code': 'Dyeing Process', 'label': 'Dyeing', 'reported': 0, 'completed': 0, 'unclosed': 0},
-			{'code': 'ACX Finishing', 'label': 'Finishing', 'reported': 1, 'completed': 2, 'unclosed': 2},
+			{'code': 'Finishing Process', 'label': 'Finishing', 'reported': 1, 'completed': 2, 'unclosed': 2},
 		])
 		self.assertEqual((result['reported'], result['completed']), (5, 5))
 
@@ -278,11 +665,12 @@ class SafetyCountsTests(SimpleTestCase):
 		end = datetime(2026, 10, 3, 16, 45)
 		result = get_safety_counts(self.now, start=start, end=end)
 		self.assertEqual((result['start'], result['end']), (start, end))
-		self.assertEqual(self.cursor.execute.call_args.args[1][-8:], [
+		self.assertEqual(self.cursor.execute.call_args.args[1][-9:], [
 			start, datetime(2026, 10, 3, 16, 46),
 			start, datetime(2026, 10, 3, 16, 46),
 			start, datetime(2026, 10, 3, 16, 46),
 			datetime(2026, 10, 29, 9), datetime(2026, 10, 29, 9),
+			datetime(2026, 1, 1),
 		])
 
 	def test_source_timezone_is_configurable(self):
@@ -303,10 +691,10 @@ class SafetyCountsTests(SimpleTestCase):
 	def test_template_displays_one_line_per_area(self):
 		page = render_to_string('briefing/briefing.html', {'safety': get_safety_counts(self.now)})
 		text = ' '.join(strip_tags(page).split())
-		self.assertEqual(page.count('class="safety-area-row"'), 3)
-		self.assertEqual(page.count('class="safety-area-reported"'), 3)
-		self.assertEqual(page.count('class="safety-area-completed"'), 3)
-		self.assertEqual(page.count('class="safety-area-unclosed"'), 3)
+		self.assertEqual(page.count('class="safety-area-row"'), 6)
+		self.assertEqual(page.count('class="safety-area-reported"'), 6)
+		self.assertEqual(page.count('class="safety-area-completed"'), 6)
+		self.assertEqual(page.count('class="safety-area-unclosed"'), 6)
 		for label, reported, completed, unclosed in [('Weaving', 4, 3, 10), ('Dyeing', 2, 2, 6), ('Finishing', 1, 0, 2)]:
 			self.assertIn(f'{label} \u65b0\u589e {reported} \u8d77\uff0c \u5b8c\u6210 {completed} \u8d77\uff0c \u672a\u5173\u95ed {unclosed} \u8d77', text)
 		self.assertLess(page.index('data-label="Weaving"'), page.index('data-label="Dyeing"'))
@@ -339,7 +727,7 @@ class SafetyCountsTests(SimpleTestCase):
 		self.assertNotIn('id="safety-status"', page)
 		self.assertNotIn('id="safety-retry"', page)
 		self.assertNotIn('safety-feedback', page)
-		self.assertEqual(page.count('class="safety-area-row"'), 3)
+		self.assertEqual(page.count('class="safety-area-row"'), 6)
 		self.assertNotIn('id="safety-reported">0</span>', page)
 
 	def test_page_does_not_wait_for_snowflake(self):

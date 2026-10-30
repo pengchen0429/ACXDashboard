@@ -8,6 +8,136 @@
   var endInput = document.getElementById('safety-end');
   var defaultButton = document.getElementById('safety-time-default');
   var activeController = null;
+  var dpmuController = null;
+  var improvementController = null;
+
+  function renderDispatchCounts(result, reportedElement, detailsElement) {
+    if (!result.available || !Number.isInteger(result.reported) || result.reported < 0 ||
+        !Number.isInteger(result.completed) || result.completed < 0 ||
+        !Number.isInteger(result.unclosed) || result.unclosed < 0 || !Array.isArray(result.areas)) {
+      throw new Error('Invalid dispatch response');
+    }
+    var rows = result.areas.map(function(area) {
+      if (typeof area.label !== 'string' ||
+          !Number.isInteger(area.reported) || area.reported < 0 ||
+          !Number.isInteger(area.completed) || area.completed < 0 ||
+          !Number.isInteger(area.unclosed) || area.unclosed < 0) {
+        throw new Error('Invalid area response');
+      }
+      var row = document.createElement('div');
+      row.className = 'safety-area-row';
+      row.dataset.label = area.label;
+      var name = document.createElement('span');
+      name.className = 'safety-area-name';
+      name.textContent = area.label;
+      var metrics = document.createElement('span');
+      metrics.className = 'safety-area-metrics';
+      [
+        {key: 'reported', label: '新增', suffix: ' 起，'},
+        {key: 'completed', label: '完成', suffix: ' 起，'},
+        {key: 'unclosed', label: '未关闭', suffix: ' 起'}
+      ].forEach(function(metric) {
+        var group = document.createElement('span');
+        group.className = 'safety-area-metric';
+        var value = document.createElement('strong');
+        value.className = 'safety-area-' + metric.key;
+        value.textContent = area[metric.key];
+        group.append(metric.label + ' ', value, metric.suffix);
+        metrics.append(group);
+      });
+      row.append(name, ' ', metrics);
+      return row;
+    });
+    reportedElement.textContent = result.reported;
+    detailsElement.replaceChildren.apply(detailsElement, rows);
+  }
+
+  async function loadImprovement(start, end) {
+    var improvementCard = document.getElementById('improvement-kpi');
+    if (!improvementCard) return;
+    if (improvementController) improvementController.abort();
+    var controller = new AbortController();
+    improvementController = controller;
+    var timer = setTimeout(function() { controller.abort(); }, 35000);
+    var reportedElement = document.getElementById('improvement-reported');
+    var detailsElement = document.getElementById('improvement-details');
+    improvementCard.setAttribute('aria-busy', 'true');
+    reportedElement.textContent = '--';
+    detailsElement.querySelectorAll('strong').forEach(function(value) { value.textContent = '--'; });
+    var url = new URL(improvementCard.dataset.url, window.location.href);
+    url.searchParams.set('start_time', start);
+    url.searchParams.set('end_time', end);
+    url.searchParams.set('include_trend', '1');
+    clearTrendChart('chartImprovement', start, end);
+    try {
+      var response = await fetch(url, {signal: controller.signal, credentials: 'same-origin', cache: 'no-store'});
+      if (!response.ok) throw new Error('Improvement request failed');
+      var result = await response.json();
+      if (improvementController !== controller) return;
+      renderDispatchCounts(result, reportedElement, detailsElement);
+      updateDispatchTrend(result.trend, improvementChart, 'trend-placeholder');
+    } catch (error) {
+      if (improvementController !== controller) return;
+      console.warn('Unable to load improvement counts', error);
+    } finally {
+      clearTimeout(timer);
+      if (improvementController === controller) {
+        improvementCard.setAttribute('aria-busy', 'false');
+        improvementController = null;
+      }
+    }
+  }
+
+  async function loadDpmu(start, end) {
+    var dpmuCard = document.getElementById('dpmu-kpi');
+    if (!dpmuCard) return;
+    if (dpmuController) dpmuController.abort();
+    var controller = new AbortController();
+    dpmuController = controller;
+    var timer = setTimeout(function() { controller.abort(); }, 35000);
+    var value = document.getElementById('dpmu-value');
+    var scrap = document.getElementById('dpmu-scrap');
+    var production = document.getElementById('dpmu-production');
+    var status = document.getElementById('dpmu-status');
+    dpmuCard.setAttribute('aria-busy', 'true');
+    value.textContent = scrap.textContent = production.textContent = '--';
+    status.textContent = '查询中';
+    var url = new URL(dpmuCard.dataset.url, window.location.href);
+    url.searchParams.set('start_time', start);
+    url.searchParams.set('end_time', end);
+    url.searchParams.set('include_trend', '1');
+    clearTrendChart('chartDpmu', start, end);
+    try {
+      var response = await fetch(url, {signal: controller.signal, credentials: 'same-origin', cache: 'no-store'});
+      if (!response.ok) throw new Error('DPMU request failed');
+      var result = await response.json();
+      if (dpmuController !== controller) return;
+      if (!result.available || !['production', 'scrap'].every(function(key) {
+        return (typeof result[key] === 'string' || typeof result[key] === 'number') &&
+          String(result[key]).trim() !== '' && Number.isFinite(Number(result[key]));
+      }) || !(result.dpmu === null ||
+          ((typeof result.dpmu === 'string' || typeof result.dpmu === 'number') &&
+          String(result.dpmu).trim() !== '' && Number.isFinite(Number(result.dpmu))))) {
+        throw new Error('Invalid DPMU response');
+      }
+      production.textContent = Number(result.production).toLocaleString('zh-CN', {maximumFractionDigits: 6});
+      scrap.textContent = Number(result.scrap).toLocaleString('zh-CN', {maximumFractionDigits: 6});
+      value.textContent = result.dpmu === null ? '--' : String(Number(Number(result.dpmu).toPrecision(6)));
+      status.textContent = Number(result.production) <= 0 ? '无有效产量' : '';
+      updateDpmuTrend(result.trend);
+    } catch (error) {
+      if (dpmuController !== controller) return;
+      value.textContent = scrap.textContent = production.textContent = '--';
+      status.textContent = '数据暂不可用';
+      console.warn('Unable to load DPMU counts', error);
+    } finally {
+      clearTimeout(timer);
+      if (dpmuController === controller) {
+        dpmuCard.setAttribute('aria-busy', 'false');
+        dpmuController = null;
+      }
+    }
+  }
 
   function validateRange() {
     endInput.setCustomValidity(startInput.value && endInput.value &&
@@ -17,6 +147,8 @@
   async function loadSafety() {
     validateRange();
     if (!form.reportValidity()) return;
+    loadDpmu(startInput.value, endInput.value);
+    loadImprovement(startInput.value, endInput.value);
     if (activeController) activeController.abort();
     var controller = new AbortController();
     activeController = controller;
@@ -49,46 +181,8 @@
       if (!response.ok) throw new Error('Safety request failed');
       var result = await response.json();
       if (activeController !== controller) return;
-      if (!result.available || !Number.isInteger(result.reported) || result.reported < 0 ||
-          !Number.isInteger(result.completed) || result.completed < 0 ||
-          !Number.isInteger(result.unclosed) || result.unclosed < 0 ||
-          !Array.isArray(result.areas)) {
-        throw new Error('Invalid safety response');
-      }
-      var rows = result.areas.map(function(area) {
-        if (typeof area.label !== 'string' ||
-            !Number.isInteger(area.reported) || area.reported < 0 ||
-            !Number.isInteger(area.completed) || area.completed < 0 ||
-            !Number.isInteger(area.unclosed) || area.unclosed < 0) {
-          throw new Error('Invalid area response');
-        }
-        var row = document.createElement('div');
-        row.className = 'safety-area-row';
-        row.dataset.label = area.label;
-        var name = document.createElement('span');
-        name.className = 'safety-area-name';
-        name.textContent = area.label;
-        var metrics = document.createElement('span');
-        metrics.className = 'safety-area-metrics';
-        [
-          {key: 'reported', label: '新增', suffix: ' 起，'},
-          {key: 'completed', label: '完成', suffix: ' 起，'},
-          {key: 'unclosed', label: '未关闭', suffix: ' 起'}
-        ].forEach(function(metric) {
-          var group = document.createElement('span');
-          group.className = 'safety-area-metric';
-          var value = document.createElement('strong');
-          value.className = 'safety-area-' + metric.key;
-          value.textContent = area[metric.key];
-          group.append(metric.label + ' ', value, metric.suffix);
-          metrics.append(group);
-        });
-        row.append(name, ' ', metrics);
-        return row;
-      });
-      reported.textContent = result.reported;
-      details.replaceChildren.apply(details, rows);
-      updateSafetyTrend(result.trend);
+      renderDispatchCounts(result, reported, details);
+      updateDispatchTrend(result.trend, safetyChart, 'safety-chart-placeholder');
     } catch (error) {
       if (activeController !== controller) return;
       reported.textContent = '--';
@@ -122,8 +216,6 @@ var data = {
   months: ['25-11','25-12','26-01','26-02','26-03','26-04','26-05','26-06','26-07','26-08','26-09','26-10'],
   defectTypes: ['尺寸超差','外观划伤','焊接缺陷','装配错位','包装破损','其他'],
   defectCounts: [42,31,18,12,7,5],
-  fpy: [94.2,94.8,93.5,95.1,95.6,95.0,96.2,96.5,95.8,96.8,97.1,97.4],
-  fpyTarget: 96.5,
   output: [28.5,30.2,27.8,31.5,33.0,32.4,34.1,33.6,35.2,34.8,36.0,37.2],
   otd: [95.5,94.8,96.2,95.0,96.8,97.1,96.5,97.8,98.0,97.5,98.2,98.6],
   otdTarget: 98,
@@ -133,9 +225,7 @@ var data = {
     { name: '能源动力', value: 68 },
     { name: '折旧摊销', value: 54 },
     { name: '其他费用', value: 40 }
-  ],
-  radarActual: [95,97,98.6,88,92],
-  radarTarget: [100,96.5,98,95,90]
+  ]
 };
 
 /* 帕累托累计占比 */
@@ -145,36 +235,75 @@ var cumPct = data.defectCounts.map(function(v){ cum += v; return +(cum / totalDe
 
 /* ================= 暗色主题通用配置 ================= */
 var AX = { color: '#9db8e0', fontSize: isMobile ? 10 : 11 };
+var LEGEND = { show: false };
 var SPLIT = { lineStyle: { color: 'rgba(88,140,220,0.15)' } };
 var TIP = {
   backgroundColor: 'rgba(10,25,52,0.94)',
   borderColor: 'rgba(64,140,255,0.4)',
   textStyle: { color: '#d7e6ff', fontSize: 12 }
 };
-function baseTitle(text) {
-  return { text: text, left: 'center', top: isMobile ? 4 : 8,
-           textStyle: { fontSize: isMobile ? 13 : 14, color: '#e8f2ff', fontWeight: 600 } };
+function renderChartLegend(chart) {
+  var container = document.querySelector('[data-legend-for="' + chart.getDom().id + '"]');
+  if (!container) return;
+  var option = chart.getOption();
+  var selected = option.legend[0].selected || {};
+  var entries = [];
+  option.series.forEach(function(series, seriesIndex) {
+    if (series.type === 'pie') {
+      series.data.forEach(function(item, dataIndex) {
+        entries.push({name: item.name, color: chart.getVisual({seriesIndex: seriesIndex, dataIndex: dataIndex}, 'color')});
+      });
+    } else {
+      entries.push({name: series.name, color: chart.getVisual({seriesIndex: seriesIndex}, 'color')});
+    }
+  });
+  container.replaceChildren.apply(container, entries.map(function(entry) {
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.setAttribute('aria-pressed', String(selected[entry.name] !== false));
+    button.title = entry.name;
+    var swatch = document.createElement('span');
+    swatch.className = 'chart-legend-swatch';
+    swatch.style.backgroundColor = entry.color;
+    button.append(swatch, entry.name);
+    button.addEventListener('click', function() {
+      chart.dispatchAction({type: 'legendToggleSelect', name: entry.name});
+      button.setAttribute('aria-pressed', String(chart.getOption().legend[0].selected[entry.name] !== false));
+    });
+    return button;
+  }));
 }
 
 var charts = [];
 function initChart(id, option) {
+  if (option.yAxis) {
+    var axes = Array.isArray(option.yAxis) ? option.yAxis : [option.yAxis];
+    axes.forEach(function(axis, index) {
+      if (!axis.name) return;
+      axis.nameGap = 8;
+      axis.nameTextStyle = Object.assign({}, axis.nameTextStyle, {
+        align: axis.position === 'right' || index > 0 ? 'right' : 'left'
+      });
+    });
+  }
   var c = echarts.init(document.getElementById(id));
   c.setOption(option);
+  renderChartLegend(c);
   charts.push(c);
   return c;
 }
 
 var safetyChart = initChart('chartSafety', {
   tooltip: Object.assign({ trigger: 'axis', valueFormatter: function(value) { return value + ' 起'; } }, TIP),
-  legend: {bottom: 0, left: 'center', textStyle: AX, itemWidth: 12, itemHeight: 8},
-  grid: { top: 26, bottom: 40, left: 12, right: 12, containLabel: true },
+  legend: Object.assign({}, LEGEND),
+  grid: { top: 22, bottom: 8, left: 8, right: 8, containLabel: true },
   xAxis: { type: 'category', data: [], axisLabel: Object.assign({}, AX, {hideOverlap: true}), axisLine: { lineStyle: { color: 'rgba(88,140,220,0.3)' } } },
   yAxis: { type: 'value', name: '新增(起)', min: 0, minInterval: 1, nameTextStyle: { color: '#7d9cc9', fontSize: 10 }, axisLabel: AX, splitLine: SPLIT },
   graphic: [{id: 'safety-chart-placeholder', type: 'text', left: 'center', top: 'middle', style: {text: '--', fill: '#9db8e0', fontSize: 18}}],
   series: []
 });
 
-function updateSafetyTrend(trend) {
+function updateDispatchTrend(trend, chart, placeholderId) {
   if (!trend || !trend.available || !Array.isArray(trend.points) || !Array.isArray(trend.areas) ||
       !['day', 'month', 'year'].includes(trend.granularity) ||
       trend.points.some(function(point) {
@@ -190,10 +319,10 @@ function updateSafetyTrend(trend) {
     console.warn('Unable to load safety trend');
     return;
   }
-  var colors = {'Weaving Process': '#34d97e', 'Dyeing Process': '#409cff', 'ACX Finishing': '#fac858'};
+  var colors = {'Weaving Process': '#34d97e', 'Dyeing Process': '#409cff', 'Finishing Process': '#fac858'};
   var palette = ['#34d97e', '#409cff', '#fac858', '#ff9f43', '#5ed4dd'];
-  safetyChart.setOption({
-    graphic: [{id: 'safety-chart-placeholder', invisible: true}],
+  chart.setOption({
+    graphic: [{id: placeholderId, invisible: trend.points.length > 0}],
     legend: {data: trend.areas.map(function(area) { return area.label; })},
     xAxis: {data: trend.points.map(function(point) {
       return point.date.slice(0, trend.granularity === 'year' ? 4 : trend.granularity === 'month' ? 7 : 10);
@@ -210,6 +339,44 @@ function updateSafetyTrend(trend) {
       };
     })
   }, {replaceMerge: ['series']});
+  renderChartLegend(chart);
+}
+
+function clearTrendChart(id, start, end) {
+  var element = document.getElementById(id);
+  element.dataset.startTime = start;
+  element.dataset.endTime = end;
+  var chart = echarts.getInstanceByDom(element);
+  chart.setOption({
+    xAxis: {data: []},
+    series: (chart.getOption().series || []).map(function(series) { return {id: series.id, data: []}; }),
+    graphic: [{id: 'trend-placeholder', invisible: false}]
+  });
+}
+
+function updateDpmuTrend(trend) {
+  if (!trend || !trend.available || !Array.isArray(trend.points) ||
+      !['day', 'month', 'year'].includes(trend.granularity) || trend.points.some(function(point) {
+        return typeof point.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(point.date) ||
+          !['production', 'scrap'].every(function(key) {
+            return (typeof point[key] === 'string' || typeof point[key] === 'number') &&
+              String(point[key]).trim() !== '' && Number.isFinite(Number(point[key]));
+          }) || !(point.dpmu === null ||
+            ((typeof point.dpmu === 'string' || typeof point.dpmu === 'number') &&
+            String(point.dpmu).trim() !== '' && Number.isFinite(Number(point.dpmu))));
+      })) {
+    console.warn('Unable to load DPMU trend');
+    return;
+  }
+  dpmuChart.setOption({
+    graphic: [{id: 'trend-placeholder', invisible: trend.points.some(function(point) { return point.dpmu !== null; })}],
+    xAxis: {data: trend.points.map(function(point) {
+      return point.date.slice(0, trend.granularity === 'year' ? 4 : trend.granularity === 'month' ? 7 : 10);
+    })},
+    series: [{id: 'dpmu', data: trend.points.map(function(point) {
+      return point.dpmu === null ? null : Number(point.dpmu);
+    })}]
+  });
 }
 
 function updateDemoCharts(start, end) {
@@ -234,9 +401,6 @@ function updateDemoCharts(start, end) {
     }]);
     echarts.getInstanceByDom(element).setOption(option);
   }
-  apply('chartFpy', {
-    xAxis: {data: selected(data.months)}, series: [{data: selected(data.fpy)}]
-  }, indices.length > 0);
   apply('chartDelivery', {
     xAxis: {data: selected(data.months)},
     series: [{data: selected(data.output)}, {data: selected(data.otd)}]
@@ -249,19 +413,10 @@ function updateDemoCharts(start, end) {
     graphic: [{id: 'cost-total', invisible: !hasSnapshot}],
     series: [{data: hasSnapshot ? data.cost : []}]
   }, hasSnapshot);
-  apply('chartRadar', {
-    series: [{data: hasSnapshot ? [
-      {name: '本月实际', value: data.radarActual, itemStyle: {color: '#409cff'},
-        lineStyle: {width: 2, color: '#409cff'}, areaStyle: {color: 'rgba(64,156,255,0.25)'}},
-      {name: '月度目标', value: data.radarTarget, itemStyle: {color: '#fac858'},
-        lineStyle: {width: 2, color: '#fac858', type: 'dashed'}, areaStyle: {color: 'rgba(250,200,88,0.12)'}}
-    ] : []}]
-  }, hasSnapshot);
 }
 
 /* ================= Q 质量：缺陷帕累托 ================= */
 initChart('chartPareto', {
-  title: baseTitle('Q · 本月缺陷类型帕累托分析'),
   tooltip: Object.assign({ trigger: 'axis' }, TIP, {
     formatter: function(params) {
       if (!Array.isArray(params)) return '';
@@ -274,8 +429,8 @@ initChart('chartPareto', {
       return s;
     }
   }),
-  legend: { bottom: 0, left: 'center', textStyle: AX, itemWidth: 14 },
-  grid: { top: isMobile ? '14%' : '16%', bottom: '18%', left: '4%', right: '4%', containLabel: true },
+  legend: Object.assign({}, LEGEND),
+  grid: { top: 22, bottom: 8, left: 8, right: 8, containLabel: true },
   xAxis: { type: 'category', data: data.defectTypes,
            axisLabel: Object.assign({}, AX, { interval: 0, rotate: isMobile ? 30 : 0 }),
            axisLine: { lineStyle: { color: 'rgba(88,140,220,0.3)' } } },
@@ -300,44 +455,21 @@ initChart('chartPareto', {
   ]
 });
 
-/* ================= Q 质量：一次合格率趋势 ================= */
-initChart('chartFpy', {
-  title: baseTitle('Q · 一次合格率（FPY）月度趋势'),
-  tooltip: Object.assign({ trigger: 'axis' }, TIP, {
-    formatter: function(params) {
-      if (!Array.isArray(params)) return '';
-      var s = params[0].axisValue + '<br/>';
-      params.forEach(function(p) {
-        if (p.componentType !== 'series' || p.value == null || !isFinite(p.value)) return;
-        s += p.marker + p.seriesName + ': ' + Number(p.value).toFixed(1) + '%<br/>';
-      });
-      return s;
-    }
-  }),
-  legend: { bottom: 0, left: 'center', textStyle: AX, itemWidth: 14 },
-  grid: { top: isMobile ? '14%' : '16%', bottom: '18%', left: '4%', right: '4%', containLabel: true },
-  xAxis: { type: 'category', boundaryGap: false, data: data.months,
-           axisLabel: AX, axisLine: { lineStyle: { color: 'rgba(88,140,220,0.3)' } } },
-  yAxis: { type: 'value', name: 'FPY(%)', nameTextStyle: { color: '#7d9cc9', fontSize: 10 },
-           min: 92, max: 99, axisLabel: AX, splitLine: SPLIT },
-  series: [
-    { name: '一次合格率', type: 'line', smooth: true, symbol: 'circle', symbolSize: 5,
-      itemStyle: { color: '#34d97e' }, lineStyle: { width: 2.5 },
-      areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1,
-        [{ offset: 0, color: 'rgba(52,217,126,0.35)' }, { offset: 1, color: 'rgba(52,217,126,0.02)' }]) },
-      label: { show: true, position: 'top', color: '#7be8ab', fontSize: 10,
-               formatter: function(p) { return Number(p.value).toFixed(1); } },
-      markLine: { silent: true, symbol: 'none',
-        lineStyle: { color: 'rgba(250,200,88,0.8)', type: 'dashed' },
-        label: { formatter: '目标 96.5%', color: '#fac858', fontSize: 10, position: 'insideStartTop' },
-        data: [{ yAxis: data.fpyTarget }] },
-      data: data.fpy }
-  ]
+var dpmuChart = initChart('chartDpmu', {
+  tooltip: Object.assign({trigger: 'axis', valueFormatter: function(value) {
+    return value == null ? '--' : String(Number(Number(value).toPrecision(6)));
+  }}, TIP),
+  grid: {top: 22, bottom: 8, left: 8, right: 8, containLabel: true},
+  xAxis: {type: 'category', data: [], axisLabel: Object.assign({}, AX, {hideOverlap: true})},
+  yAxis: {type: 'value', name: 'DPMU', min: 0, axisLabel: AX, splitLine: SPLIT,
+    nameTextStyle: {color: '#7d9cc9', fontSize: 10}},
+  graphic: [{id: 'trend-placeholder', type: 'text', left: 'center', top: 'middle', style: {text: '--', fill: '#9db8e0', fontSize: 18}}],
+  series: [{id: 'dpmu', name: 'DPMU', type: 'line', connectNulls: false, symbol: 'circle', symbolSize: 6,
+    itemStyle: {color: '#409cff'}, lineStyle: {width: 2}, data: []}]
 });
 
 /* ================= D 交付：产量 + 准时交付率 ================= */
 initChart('chartDelivery', {
-  title: baseTitle('D · 月度产量与准时交付率'),
   tooltip: Object.assign({ trigger: 'axis' }, TIP, {
     formatter: function(params) {
       if (!Array.isArray(params)) return '';
@@ -350,8 +482,8 @@ initChart('chartDelivery', {
       return s;
     }
   }),
-  legend: { bottom: 0, left: 'center', textStyle: AX, itemWidth: 14 },
-  grid: { top: isMobile ? '14%' : '16%', bottom: '18%', left: '4%', right: '4%', containLabel: true },
+  legend: Object.assign({}, LEGEND),
+  grid: { top: 22, bottom: 8, left: 8, right: 8, containLabel: true },
   xAxis: { type: 'category', data: data.months,
            axisLabel: AX, axisLine: { lineStyle: { color: 'rgba(88,140,220,0.3)' } } },
   yAxis: [
@@ -378,26 +510,23 @@ initChart('chartDelivery', {
 /* ================= C 成本：制造成本构成（环形图） ================= */
 var costTotal = data.cost.reduce(function(a,b){ return a + b.value; }, 0);
 initChart('chartCost', {
-  title: baseTitle('C · 本月制造成本构成'),
   tooltip: Object.assign({ trigger: 'item' }, TIP, {
     formatter: function(p) {
       if (p.componentType !== 'series') return '';
       return p.name + '<br/>金额: ' + Number(p.value).toFixed(0) + ' 万元<br/>占比: ' + Number(p.percent).toFixed(1) + '%';
     }
   }),
-  legend: isMobile
-    ? { orient: 'horizontal', bottom: 0, left: 'center', textStyle: AX, itemWidth: 12 }
-    : { orient: 'vertical', right: '4%', top: 'center', textStyle: AX, itemWidth: 12 },
+  legend: Object.assign({}, LEGEND),
   graphic: [{
     id: 'cost-total',
-    type: 'text', left: isMobile ? '38%' : '32%', top: 'center',
+    type: 'text', left: 'center', top: 'center',
     style: { text: '总计\n' + costTotal + ' 万元', textAlign: 'center', fill: '#e8f2ff', fontSize: isMobile ? 13 : 16, fontWeight: 600 }
   }],
   color: ['#409cff','#34d97e','#fac858','#ff9f43','#b28dff'],
   series: [{
     name: '成本构成', type: 'pie',
-    center: isMobile ? ['38%','46%'] : ['32%','55%'],
-    radius: isMobile ? ['26%','48%'] : ['40%','66%'],
+    center: ['50%','50%'],
+    radius: ['42%','76%'],
     avoidLabelOverlap: true,
     itemStyle: { borderColor: '#0a1934', borderWidth: 2 },
     label: { position: 'inside', formatter: '{d}%', color: '#fff', fontSize: isMobile ? 10 : 12 },
@@ -406,38 +535,15 @@ initChart('chartCost', {
   }]
 });
 
-/* ================= M 士气 + 综合：SQDCM 五维雷达 ================= */
-initChart('chartRadar', {
-  title: baseTitle('M · SQDCM 五维综合达成雷达'),
-  tooltip: Object.assign({}, TIP),
-  legend: { bottom: 0, left: 'center', textStyle: AX, itemWidth: 14 },
-  radar: {
-    center: ['50%', isMobile ? '52%' : '55%'],
-    radius: isMobile ? '55%' : '62%',
-    indicator: [
-      { name: '安全\nSafety', max: 100 },
-      { name: '质量\nQuality', max: 100 },
-      { name: '交付\nDelivery', max: 100 },
-      { name: '成本\nCost', max: 100 },
-      { name: '士气\nMorale', max: 100 }
-    ],
-    axisName: { color: '#9db8e0', fontSize: isMobile ? 10 : 12 },
-    splitLine: { lineStyle: { color: 'rgba(88,140,220,0.25)' } },
-    splitArea: { areaStyle: { color: ['rgba(30,60,110,0.12)','rgba(20,45,90,0.2)'] } },
-    axisLine: { lineStyle: { color: 'rgba(88,140,220,0.3)' } }
-  },
-  series: [{
-    type: 'radar',
-    symbolSize: 4,
-    data: [
-      { name: '本月实际', value: data.radarActual,
-        itemStyle: { color: '#409cff' }, lineStyle: { width: 2, color: '#409cff' },
-        areaStyle: { color: 'rgba(64,156,255,0.25)' } },
-      { name: '月度目标', value: data.radarTarget,
-        itemStyle: { color: '#fac858' }, lineStyle: { width: 2, color: '#fac858', type: 'dashed' },
-        areaStyle: { color: 'rgba(250,200,88,0.12)' } }
-    ]
-  }]
+var improvementChart = initChart('chartImprovement', {
+  tooltip: Object.assign({trigger: 'axis', valueFormatter: function(value) { return value + ' 起'; }}, TIP),
+  legend: Object.assign({}, LEGEND),
+  grid: {top: 22, bottom: 8, left: 8, right: 8, containLabel: true},
+  xAxis: {type: 'category', data: [], axisLabel: Object.assign({}, AX, {hideOverlap: true})},
+  yAxis: {type: 'value', name: '新增(起)', min: 0, minInterval: 1, axisLabel: AX, splitLine: SPLIT,
+    nameTextStyle: {color: '#7d9cc9', fontSize: 10}},
+  graphic: [{id: 'trend-placeholder', type: 'text', left: 'center', top: 'middle', style: {text: '--', fill: '#9db8e0', fontSize: 18}}],
+  series: []
 });
 
 /* ================= 自适应 ================= */

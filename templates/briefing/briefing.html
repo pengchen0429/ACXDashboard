@@ -21,7 +21,7 @@
       <div class="dash-sub">SAFETY 安全 · QUALITY 质量 · DELIVERY 交付 · COST 成本 · MORALE 士气</div>
     </div>
     <div class="dash-meta">
-      <span class="demo-badge">安全数据 · Snowflake / 其余为示例数据</span><br>
+      <span class="demo-badge">安全、改善提案 · Snowflake / DPMU · MESAQ / 其余为示例数据</span><br>
       <form id="safety-time-filter" class="safety-time-filter" aria-label="统计时间筛选">
         <span class="safety-time-heading">统计时间</span>
         <div class="safety-time-fields">
@@ -44,7 +44,7 @@
 
   <!-- KPI 卡片行 -->
   <div class="kpi-row">
-    <div class="kpi-card" id="safety-kpi" data-url="{% url 'briefing_safety_data' %}" aria-busy="{% if safety.loading %}true{% else %}false{% endif %}" style="--kpi-color:#34d97e">
+    <div class="kpi-card kpi-detail-card" id="safety-kpi" data-url="{% url 'briefing_safety_data' %}" aria-busy="{% if safety.loading %}true{% else %}false{% endif %}" style="--kpi-color:#34d97e">
       <div class="safety-summary">
         <div class="kpi-tag"><span class="kpi-letter">S</span>安全Jidoka统计</div>
         <div class="kpi-value"><span id="safety-reported">{% if safety.available %}{{ safety.reported }}{% else %}--{% endif %}</span><span class="unit">起</span></div>
@@ -64,12 +64,18 @@
         </div>
       </div>
     </div>
-    <div class="kpi-card" style="--kpi-color:#409cff">
-      <div class="kpi-tag"><span class="kpi-letter">Q</span>一次合格率</div>
-      <div class="kpi-value">97.4<span class="unit">%</span></div>
-      <div class="kpi-delta up">▲ 0.3 pct · 高于目标 96.5%</div>
+    <div class="kpi-card kpi-detail-card" id="dpmu-kpi" data-url="{% url 'briefing_dpmu_data' %}" aria-busy="true" style="--kpi-color:#409cff">
+      <div class="safety-summary">
+        <div class="kpi-tag"><span class="kpi-letter">Q</span>DPMU统计</div>
+        <div class="kpi-value" id="dpmu-value" aria-live="polite">--</div>
+      </div>
+      <div class="kpi-delta flat dpmu-details">
+        <div class="dpmu-detail-row"><span>报废量</span><strong id="dpmu-scrap">--</strong></div>
+        <div class="dpmu-detail-row"><span>产量</span><strong id="dpmu-production">--</strong></div>
+        <div id="dpmu-status" role="status">查询中</div>
+      </div>
     </div>
-    <div class="kpi-card" style="--kpi-color:#fac858">
+    <div class="kpi-card" style="--kpi-color:#5ed4dd">
       <div class="kpi-tag"><span class="kpi-letter">D</span>准时交付率</div>
       <div class="kpi-value">98.6<span class="unit">%</span></div>
       <div class="kpi-delta up">▲ 0.4 pct · 高于目标 98%</div>
@@ -79,10 +85,25 @@
       <div class="kpi-value">800<span class="unit">万元</span></div>
       <div class="kpi-delta up">▼ 3.2% · 环比下降</div>
     </div>
-    <div class="kpi-card" style="--kpi-color:#b28dff">
-      <div class="kpi-tag"><span class="kpi-letter">M</span>员工改善提案</div>
-      <div class="kpi-value">126<span class="unit">件</span></div>
-      <div class="kpi-delta up">▲ 12 件 · 环比上升</div>
+    <div class="kpi-card kpi-detail-card" id="improvement-kpi" data-url="{% url 'briefing_improvement_data' %}" aria-busy="true" style="--kpi-color:#b28dff">
+      <div class="safety-summary">
+        <div class="kpi-tag"><span class="kpi-letter">M</span>员工改善提案</div>
+        <div class="kpi-value"><span id="improvement-reported">--</span><span class="unit">起</span></div>
+      </div>
+      <div class="kpi-delta flat safety-status" aria-live="polite">
+        <div id="improvement-details">
+          {% for area in safety.areas %}
+          <div class="safety-area-row" data-label="{{ area.label }}">
+            <span class="safety-area-name">{{ area.label }}</span>
+            <span class="safety-area-metrics">
+              <span class="safety-area-metric">新增 <strong class="safety-area-reported">--</strong> 起，</span>
+              <span class="safety-area-metric">完成 <strong class="safety-area-completed">--</strong> 起，</span>
+              <span class="safety-area-metric">未关闭 <strong class="safety-area-unclosed">--</strong> 起</span>
+            </span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
     </div>
   </div>
 
@@ -91,6 +112,7 @@
     <section class="card safety-chart-card" aria-labelledby="safety-chart-title">
       <header class="safety-chart-header">
         <h2 id="safety-chart-title">S · 安全 Jidoka 数量</h2>
+        <div class="chart-legend" data-legend-for="chartSafety" aria-label="安全图例"></div>
       </header>
       <div id="chartSafety"
            class="chart-container"
@@ -99,11 +121,40 @@
            role="img"
            aria-label="织染整安全 Jidoka 新增数量分组趋势柱状图"></div>
     </section>
-    <div class="card"><div class="chart-container" id="chartPareto" data-chart="true"></div></div>
-    <div class="card"><div class="chart-container" id="chartFpy" data-chart="true"></div></div>
-    <div class="card"><div class="chart-container" id="chartDelivery" data-chart="true"></div></div>
-    <div class="card"><div class="chart-container" id="chartCost" data-chart="true"></div></div>
-    <div class="card"><div class="chart-container" id="chartRadar" data-chart="true"></div></div>
+    <section class="card safety-chart-card" aria-labelledby="pareto-chart-title">
+      <header class="safety-chart-header">
+        <h2 id="pareto-chart-title">Q · 本月缺陷类型帕累托分析</h2>
+        <div class="chart-legend" data-legend-for="chartPareto" aria-label="缺陷图例"></div>
+      </header>
+      <div class="chart-container" id="chartPareto" data-chart="true"></div>
+    </section>
+    <section class="card safety-chart-card" aria-labelledby="dpmu-chart-title">
+      <header class="safety-chart-header"><h2 id="dpmu-chart-title">Q · DPMU 趋势</h2></header>
+      <div class="chart-container" id="chartDpmu" data-chart="true"
+           data-url="{% url 'briefing_dpmu_data' %}" role="img" aria-label="织造 DPMU 生产日趋势图"></div>
+    </section>
+    <section class="card safety-chart-card" aria-labelledby="delivery-chart-title">
+      <header class="safety-chart-header">
+        <h2 id="delivery-chart-title">D · 月度产量与准时交付率</h2>
+        <div class="chart-legend" data-legend-for="chartDelivery" aria-label="交付图例"></div>
+      </header>
+      <div class="chart-container" id="chartDelivery" data-chart="true"></div>
+    </section>
+    <section class="card safety-chart-card" aria-labelledby="cost-chart-title">
+      <header class="safety-chart-header">
+        <h2 id="cost-chart-title">C · 本月制造成本构成</h2>
+        <div class="chart-legend" data-legend-for="chartCost" aria-label="成本图例"></div>
+      </header>
+      <div class="chart-container" id="chartCost" data-chart="true"></div>
+    </section>
+    <section class="card safety-chart-card" aria-labelledby="improvement-chart-title">
+      <header class="safety-chart-header">
+        <h2 id="improvement-chart-title">M · 员工改善提案趋势</h2>
+        <div class="chart-legend" data-legend-for="chartImprovement" aria-label="改善提案图例"></div>
+      </header>
+      <div class="chart-container" id="chartImprovement" data-chart="true"
+           data-url="{% url 'briefing_improvement_data' %}" role="img" aria-label="织染整员工改善提案新增数量趋势图"></div>
+    </section>
   </div>
   
 </div>
