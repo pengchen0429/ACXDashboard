@@ -3,4 +3,5 @@
 __pycache__/
 *.py[cod]
 .venv/
+.cache/
 config/settings_local.py

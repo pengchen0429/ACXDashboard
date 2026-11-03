@@ -1,3 +1,64 @@
+(function() {
+	window.setTimeout(function() { window.location.reload(); }, 30000);
+})();
+
+(function() {
+	var card = document.getElementById('todayProduction');
+	if (!card) return;
+	var metrics = [
+		{ card: card, field: 'actual', loaded: false },
+		{ card: document.getElementById('todayDowntime'), field: 'downtime_minutes', loaded: false }
+	].filter(function(metric) { return metric.card; });
+	var readings = card.querySelectorAll('[data-production-site]');
+	var pending = readings.length;
+
+	function renderMetric(metric, site, data) {
+		var reading = metric.card.querySelector('[data-production-site="' + site + '"]');
+		var value = reading.querySelector('[data-production-value]');
+		var siteStatus = reading.querySelector('.production-site-status');
+		var total = data && data[metric.field] != null ? Number(data[metric.field]) : NaN;
+		if (Number.isFinite(total)) {
+			value.textContent = total.toLocaleString('zh-CN', { maximumFractionDigits: 20 });
+			siteStatus.textContent = data.stale ? '数据暂未更新' : '';
+			if (data.updated_at) reading.title = '数据更新时间：' + new Date(data.updated_at).toLocaleString('zh-CN');
+			metric.loaded = true;
+			metric.card.querySelector('.daily-metric-period').textContent = data.start_date.slice(0, 10) + ' 08:30 - ' + data.end_date.slice(0, 10) + ' 08:30';
+		} else {
+			value.textContent = '--';
+			siteStatus.textContent = '暂不可用';
+		}
+	}
+
+	readings.forEach(function(reading) {
+		var site = reading.dataset.productionSite;
+		fetch(card.dataset.url + '?site=' + encodeURIComponent(site) + '&include_trend=1', { cache: 'no-store' })
+			.then(function(response) {
+				if (!response.ok) throw new Error('Daily metrics request failed');
+				return response.json();
+			})
+			.then(function(data) {
+				metrics.forEach(function(metric) { renderMetric(metric, site, data); });
+				renderAreaProduction(site, data);
+				renderProductionTrend(site, data);
+			})
+			.catch(function() {
+				metrics.forEach(function(metric) { renderMetric(metric, site, null); });
+				renderAreaProduction(site, null);
+				renderProductionTrend(site, null);
+			})
+			.finally(function() {
+				pending -= 1;
+				metrics.forEach(function(metric) {
+					metric.card.querySelector('[data-production-site="' + site + '"]').setAttribute('aria-busy', 'false');
+					if (!pending) {
+						metric.card.setAttribute('aria-busy', 'false');
+						if (!metric.loaded) metric.card.querySelector('.daily-metric-period').textContent = '暂不可用';
+					}
+				});
+			});
+	});
+})();
+
 /* SECTION: clock */
 (function() {
 	function tick() {
@@ -15,49 +76,116 @@
 
 /* SECTION: chart-instances */
 var chartInstances = {};
+var areaProductionBySite = { ACX: null, CNX: null };
+var trendProductionBySite = { ACX: null, CNX: null };
+var trendDates = (function() {
+	var today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+	return Array.from({ length: 7 }, function(unused, index) {
+		var date = new Date(today + 'T00:00:00Z');
+		date.setUTCDate(date.getUTCDate() - 6 + index);
+		return date.toISOString().slice(0, 10);
+	});
+})();
+echarts.registerTheme('acxCockpit', {
+	color: ['#50d9e8', '#54dfad', '#efbd68', '#99bafa', '#f27b83'],
+	textStyle: { fontFamily: 'Bahnschrift, Microsoft YaHei, sans-serif' },
+	animationDuration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 700
+});
 
 /* SECTION: chart-dashboard-trend */
+function renderProductionTrend(site, data) {
+	trendProductionBySite[site] = data || { error: true };
+	var chart = chartInstances.dashTrend;
+	if (!chart) return;
+	if (data && Array.isArray(data.trend) && data.trend.length === 7) {
+		trendDates = data.trend.map(function(day) { return day.date; });
+	}
+	var messages = [];
+	var series = Object.keys(trendProductionBySite).map(function(name) {
+		var snapshot = trendProductionBySite[name];
+		var values = trendDates.map(function(date) {
+			var day = snapshot && Array.isArray(snapshot.trend) ? snapshot.trend.find(function(item) { return item.date === date; }) : null;
+			var value = day && day.actual != null ? Number(day.actual) : NaN;
+			return Number.isFinite(value) ? value : null;
+		});
+		if (!snapshot) messages.push(name + ' 加载中');
+		else if (values.some(function(value) { return value == null; })) messages.push(name + ' 暂不可用');
+		else if (snapshot.stale) messages.push(name + ' 数据暂未更新');
+		return { name: name, data: values };
+	});
+	chart.setOption({ xAxis: { data: trendDates }, series: series });
+	document.getElementById('dashTrendStatus').textContent = messages.join(' · ');
+	var element = document.getElementById('dashTrend');
+	element.setAttribute('aria-busy', String(Object.keys(trendProductionBySite).some(function(name) { return !trendProductionBySite[name]; })));
+	element.setAttribute('aria-label', trendDates.map(function(date, index) {
+		return date + ' ' + series.map(function(item) {
+			return item.name + ' ' + (item.data[index] == null ? '暂不可用' : item.data[index] + ' 米');
+		}).join('，');
+	}).join('；'));
+}
+
 (function() {
 	var el = document.getElementById('dashTrend');
 	if (!el) return;
-	var c = echarts.init(el);
+	var c = echarts.init(el, 'acxCockpit');
 	chartInstances['dashTrend'] = c;
 	c.setOption({
 		tooltip: { trigger:'axis', backgroundColor:'rgba(10,22,40,0.95)', borderColor:'rgba(0,212,255,0.2)', textStyle:{color:'#e0e6ed',fontSize:12} },
 		legend: { bottom:0, left:'center', textStyle:{color:'#6b7b8d',fontSize:11} },
 		grid: { top:'10%', bottom:'18%', left:'10%', right:'6%', containLabel:true },
-		xAxis: { type:'category', data:['10/08','10/09','10/10','10/11','10/12','10/13','10/14'], boundaryGap:false, axisLine:{lineStyle:{color:'rgba(255,255,255,0.08)'}}, axisLabel:{color:'#6b7b8d',fontSize:11} },
+		xAxis: { type:'category', data:trendDates, boundaryGap:true, axisLine:{lineStyle:{color:'rgba(255,255,255,0.08)'}}, axisLabel:{color:'#6b7b8d',fontSize:11,formatter:function(value){return value.slice(5).replace('-', '/');}} },
 		yAxis: { type:'value', splitLine:{lineStyle:{color:'rgba(255,255,255,0.04)'}}, axisLabel:{color:'#6b7b8d',fontSize:11,formatter:function(v){return (v/1000).toFixed(0)+'k';}} },
 		series: [
-			{ name:'实际产量', type:'line', smooth:true, data:[11200,12450,11800,13100,12680,12450,12846],
-				lineStyle:{color:'#00d4ff',width:2}, itemStyle:{color:'#00d4ff'},
-				areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:'rgba(0,212,255,0.25)'},{offset:1,color:'rgba(0,212,255,0.02)'}]}}, symbol:'circle', symbolSize:6 },
-			{ name:'目标产量', type:'line', data:[12000,12000,12000,12000,12000,12000,12000],
-				lineStyle:{color:'#ffaa00',width:1.5,type:'dashed'}, itemStyle:{color:'#ffaa00'}, symbol:'none' }
+			{ name:'ACX', type:'bar', data:trendDates.map(function(){return null;}), barMaxWidth:22, barGap:'20%', itemStyle:{color:'#50d9e8',borderRadius:[2,2,0,0]} },
+			{ name:'CNX', type:'bar', data:trendDates.map(function(){return null;}), barMaxWidth:22, itemStyle:{color:'#efbd68',borderRadius:[2,2,0,0]} }
 		]
 	});
 })();
 
 /* SECTION: chart-dashboard-lines */
+function renderAreaProduction(site, data) {
+	areaProductionBySite[site] = data || { error: true };
+	var chart = chartInstances.dashLines;
+	if (!chart) return;
+	var groups = ['ACX-Weaving', 'ACX-Dyeing', 'CNX-Weaving', 'CNX-Dyeing'];
+	var colors = ['#50d9e8', '#54dfad', '#99bafa', '#efbd68'];
+	var values = groups.map(function(group, index) {
+		var parts = group.split('-');
+		var snapshot = areaProductionBySite[parts[0]];
+		var raw = snapshot && snapshot.area_actual ? snapshot.area_actual[parts[1]] : null;
+		var value = raw == null ? NaN : Number(raw);
+		return { value: Number.isFinite(value) ? value : null, itemStyle: { color: colors[index], borderRadius: [0, 2, 2, 0] } };
+	});
+	chart.setOption({ series: [{ data: values }] });
+	var messages = Object.keys(areaProductionBySite).map(function(name) {
+		var snapshot = areaProductionBySite[name];
+		if (!snapshot) return name + ' 加载中';
+		if (!snapshot.area_actual || ['Weaving', 'Dyeing'].some(function(area) {
+			return snapshot.area_actual[area] == null || !Number.isFinite(Number(snapshot.area_actual[area]));
+		})) return name + ' 暂不可用';
+		return snapshot.stale ? name + ' 数据暂未更新' : '';
+	}).filter(Boolean);
+	document.getElementById('dashLinesStatus').textContent = messages.join(' · ');
+	var element = document.getElementById('dashLines');
+	element.setAttribute('aria-busy', String(Object.keys(areaProductionBySite).some(function(name) { return !areaProductionBySite[name]; })));
+	element.setAttribute('aria-label', groups.map(function(group, index) {
+		return group + '：' + (values[index].value == null ? '暂不可用' : values[index].value + ' 米');
+	}).join('；'));
+}
+
 (function() {
 	var el = document.getElementById('dashLines');
 	if (!el) return;
-	var c = echarts.init(el);
+	var c = echarts.init(el, 'acxCockpit');
 	chartInstances['dashLines'] = c;
 	c.setOption({
 		tooltip: { trigger:'axis', backgroundColor:'rgba(10,22,40,0.95)', borderColor:'rgba(0,212,255,0.2)', textStyle:{color:'#e0e6ed',fontSize:12} },
 		grid: { top:'8%', bottom:'8%', left:'12%', right:'8%', containLabel:true },
 		xAxis: { type:'value', splitLine:{lineStyle:{color:'rgba(255,255,255,0.04)'}}, axisLabel:{color:'#6b7b8d',fontSize:11} },
-		yAxis: { type:'category', data:['E线','D线','C线','B线','A线'], axisLine:{lineStyle:{color:'rgba(255,255,255,0.08)'}}, axisLabel:{color:'#a0b4c8',fontSize:12} },
+		yAxis: { type:'category', inverse:true, data:['ACX-Weaving','ACX-Dyeing','CNX-Weaving','CNX-Dyeing'], axisLine:{lineStyle:{color:'rgba(255,255,255,0.08)'}}, axisLabel:{color:'#a0b4c8',fontSize:12} },
 		series: [{ type:'bar', barWidth:18,
-			data:[
-				{value:1616,itemStyle:{color:{type:'linear',x:0,y:0,x2:1,y2:0,colorStops:[{offset:0,color:'rgba(244,114,182,0.2)'},{offset:1,color:'#f472b6'}]},borderRadius:[0,4,4,0]}},
-				{value:2180,itemStyle:{color:{type:'linear',x:0,y:0,x2:1,y2:0,colorStops:[{offset:0,color:'rgba(167,139,250,0.2)'},{offset:1,color:'#a78bfa'}]},borderRadius:[0,4,4,0]}},
-				{value:2650,itemStyle:{color:{type:'linear',x:0,y:0,x2:1,y2:0,colorStops:[{offset:0,color:'rgba(255,170,0,0.2)'},{offset:1,color:'#ffaa00'}]},borderRadius:[0,4,4,0]}},
-				{value:2980,itemStyle:{color:{type:'linear',x:0,y:0,x2:1,y2:0,colorStops:[{offset:0,color:'rgba(0,255,163,0.2)'},{offset:1,color:'#00ffa3'}]},borderRadius:[0,4,4,0]}},
-				{value:3420,itemStyle:{color:{type:'linear',x:0,y:0,x2:1,y2:0,colorStops:[{offset:0,color:'rgba(0,212,255,0.2)'},{offset:1,color:'#00d4ff'}]},borderRadius:[0,4,4,0]}}
-			],
-			label:{show:true,position:'right',color:'#a0b4c8',fontSize:11,formatter:function(p){return Number(p.value).toLocaleString();}}
+			data:[null,null,null,null],
+			label:{show:true,position:'right',color:'#a0b4c8',fontSize:11,formatter:function(p){return p.value == null ? '--' : Number(p.value).toLocaleString('zh-CN');}}
 		}]
 	});
 })();
@@ -66,7 +194,7 @@ var chartInstances = {};
 (function() {
 	var el = document.getElementById('dashEquip');
 	if (!el) return;
-	var c = echarts.init(el);
+	var c = echarts.init(el, 'acxCockpit');
 	chartInstances['dashEquip'] = c;
 	c.setOption({
 		tooltip: { backgroundColor:'rgba(10,22,40,0.95)', borderColor:'rgba(0,212,255,0.2)', textStyle:{color:'#e0e6ed',fontSize:12},
@@ -90,7 +218,7 @@ var chartInstances = {};
 (function() {
 	var el = document.getElementById('dashQuality');
 	if (!el) return;
-	var c = echarts.init(el);
+	var c = echarts.init(el, 'acxCockpit');
 	chartInstances['dashQuality'] = c;
 	c.setOption({
 		tooltip: { trigger:'axis', backgroundColor:'rgba(10,22,40,0.95)', borderColor:'rgba(0,212,255,0.2)', textStyle:{color:'#e0e6ed',fontSize:12} },
@@ -122,6 +250,68 @@ var chartInstances = {};
 	}
 	var el = document.getElementById('dashAlarms');
 	if (el) el.innerHTML = html;
+})();
+
+/* SECTION: cockpit-chart-style */
+(function() {
+	var axisLabel = { color: '#91a7b3', fontSize: 10 };
+	var splitLine = { lineStyle: { color: 'rgba(147,179,193,0.08)', type: 'dashed' } };
+	var tooltip = { backgroundColor: '#19262f', borderColor: '#344e5b', padding: [9, 12], textStyle: { color: '#e8f0f3', fontSize: 12 }, extraCssText: 'box-shadow:0 6px 24px #0005;border-radius:4px;' };
+	Object.keys(chartInstances).forEach(function(chartId) {
+		chartInstances[chartId].setOption({ tooltip: tooltip });
+	});
+	chartInstances.dashTrend.setOption({
+		legend: { top: 4, bottom: 'auto', right: 0, left: 'auto', icon: 'rect', itemWidth: 10, itemHeight: 8, textStyle: { color: '#9aadb8', fontSize: 10 } },
+		grid: { top: 36, bottom: 8, left: 0, right: 12, containLabel: true },
+		xAxis: { axisLabel: Object.assign({}, axisLabel, { interval: 0, fontSize: 9 }), axisTick: { show: false } },
+		yAxis: { name: '米', nameTextStyle: { color: '#91a7b3', fontSize: 10 }, axisLabel: Object.assign({}, axisLabel, { formatter: function(value) { return Math.abs(value) >= 10000 ? Number((value / 10000).toFixed(1)) + '万' : String(value); } }), splitLine: splitLine }
+	});
+	chartInstances.dashLines.setOption({
+		grid: { top: 12, bottom: 8, left: 0, right: 58, containLabel: true },
+		xAxis: { name: '米', nameGap: 12, nameTextStyle: { color: '#91a7b3', fontSize: 10 }, axisLabel: axisLabel, splitLine: splitLine },
+		yAxis: { axisTick: { show: false }, axisLine: { show: false }, axisLabel: { color: '#b3c5cd', fontSize: 11 } },
+		series: [{ barWidth: 12, showBackground: true, backgroundStyle: { color: '#ffffff04', borderRadius: 2 }, label: { color: '#c5d5dd' } }]
+	});
+	chartInstances.dashEquip.setOption({
+		legend: { bottom: 0, itemWidth: 7, itemHeight: 7, icon: 'circle', itemGap: 12, textStyle: { color: '#9aadb8', fontSize: 10 } },
+		graphic: [{ top: '30%', style: { text: '54\n设备总数', fill: '#e8f0f3', fontSize: 21, lineHeight: 28 } }],
+		series: [{ radius: ['53%', '69%'], center: ['50%', '42%'], itemStyle: { borderWidth: 3, borderColor: '#141d25' }, data: [
+			{ value: 42, name: '运行中', itemStyle: { color: '#54dfad' } },
+			{ value: 6, name: '待机中', itemStyle: { color: '#50d9e8' } },
+			{ value: 4, name: '维护保养', itemStyle: { color: '#efbd68' } },
+			{ value: 2, name: '故障停机', itemStyle: { color: '#f27b83' } }
+		] }]
+	});
+	chartInstances.dashQuality.setOption({
+		grid: { top: 12, bottom: 8, left: 0, right: 28, containLabel: true },
+		xAxis: { axisLabel: axisLabel, splitLine: splitLine },
+		yAxis: { axisTick: { show: false }, axisLine: { show: false }, axisLabel: { color: '#aabfc9', fontSize: 10 } },
+		series: [{ barWidth: 10, label: { color: '#c5d5dd' }, data: [7, 12, 18, 28, 35].map(function(value, index) { return { value: value, itemStyle: { color: ['#516d7c', '#698794', '#9caeaa', '#efbd68', '#f27b83'][index], borderRadius: [0, 2, 2, 0] } }; }) }]
+	});
+	var sparkElement = document.getElementById('sparkOutput');
+	if (sparkElement) {
+		var spark = echarts.init(sparkElement, 'acxCockpit');
+		chartInstances.sparkOutput = spark;
+		spark.setOption({ grid: { top: 3, bottom: 1, left: 0, right: 0 }, xAxis: { type: 'category', show: false, boundaryGap: false, data: ['10/08', '10/09', '10/10', '10/11', '10/12', '10/13', '10/14'] }, yAxis: { type: 'value', show: false, min: 10000 }, series: [{ type: 'line', smooth: true, symbol: 'none', data: [11200, 12450, 11800, 13100, 12680, 12450, 12846], lineStyle: { color: '#50d9e8', width: 1.5 }, areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#50d9e825' }, { offset: 1, color: '#50d9e800' }]) } }] });
+	}
+})();
+
+/* SECTION: fullscreen */
+(function() {
+	var button = document.getElementById('dashboardFullscreen');
+	if (!button) return;
+	if (!document.fullscreenEnabled) { button.hidden = true; return; }
+	button.addEventListener('click', function() {
+		var action = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+		action.catch(function() { button.title = '浏览器暂不允许全屏'; });
+	});
+	document.addEventListener('fullscreenchange', function() {
+		var active = Boolean(document.fullscreenElement);
+		button.setAttribute('aria-pressed', String(active));
+		button.setAttribute('aria-label', active ? '退出全屏' : '进入全屏');
+		button.title = active ? '退出全屏' : '进入全屏';
+		resizeDashboardCharts();
+	});
 })();
 
 /* SECTION: resize */

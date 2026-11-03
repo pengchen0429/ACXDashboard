@@ -14,9 +14,15 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
+load_dotenv()
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+L2L_BASE_URL = os.getenv("L2L_BASE_URL")
+L2L_AUTH = os.getenv("L2L_AUTH")
+L2L_SITE_ACX = os.getenv("L2L_SITE_ACX")
+L2L_SITE_CNX = os.getenv("L2L_SITE_CNX")
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
@@ -62,7 +68,6 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'config.urls'
 
-BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 TEMPLATES = [
@@ -198,6 +203,16 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+CACHES = {
+    'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'},
+    'dashboard': {
+        'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+        'LOCATION': BASE_DIR / '.cache' / 'dashboard',
+        'TIMEOUT': 30,
+    },
+}
+DASHBOARD_CACHE_LOCK_DIR = BASE_DIR / '.cache' / 'dashboard-locks'
 
 
 # Email

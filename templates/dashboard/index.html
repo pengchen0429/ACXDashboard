@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}运营总览 - ACX智慧工厂{% endblock %}
+{% block title %}运营总览 - CNSX智慧工厂{% endblock %}
+{% block body_class %}dashboard-page{% endblock %}
 
 {% block head_extra %}
 <script src="{% static 'js/echarts.min.js' %}"></script>
@@ -9,69 +10,89 @@
 {% endblock %}
 
 {% block content %}
-<!-- SECTION: topbar -->
-<div class="topbar">
-  <div class="topbar-left">
-    <span class="page-title">运营总览</span>
-    <span class="breadcrumb">首页 / 运营总览</span>
-  </div>
-  <div class="topbar-right">
-    <span><span class="status-dot"></span>系统正常</span>
-    <span id="topClock"></span>
-  </div>
-</div>
-
 <!-- SECTION: page-container -->
 <div class="page-container">
+  <header class="factory-heading">
+    <div>
+      <h1>CNSX 智慧工厂<span>运营总览</span></h1>
+    </div>
+  </header>
 
   <!-- dashboard-kpi -->
   <div class="card-grid cols-4">
-    <div class="kpi-card">
-      <div class="kpi-label">今日产量</div>
-      <div class="kpi-value">12,846 <span class="kpi-unit">件</span></div>
-      <div class="kpi-sub">较昨日 <span class="up">↑ 3.2%</span></div>
+    <div class="kpi-card daily-metric-card" id="todayProduction" data-url="{% url 'dashboard-today-production' %}" aria-busy="true">
+      <div class="kpi-label"><span>今日产量</span><span class="metric-code">数据源 - L2L</span></div>
+      <div class="production-values">
+        <div class="production-reading" data-production-site="ACX" aria-busy="true">
+          <span class="production-site-label">ACX</span>
+          <div class="kpi-value"><span data-production-value aria-live="polite">--</span><span class="kpi-unit">米</span></div>
+          <span class="production-site-status" role="status"></span>
+        </div>
+        <div class="production-reading" data-production-site="CNX" aria-busy="true">
+          <span class="production-site-label">CNX</span>
+          <div class="kpi-value"><span data-production-value aria-live="polite">--</span><span class="kpi-unit">米</span></div>
+          <span class="production-site-status" role="status"></span>
+        </div>
+      </div>
+      <div class="kpi-sub daily-metric-period" id="todayProductionStatus" role="status">加载中</div>
+    </div>
+    <div class="kpi-card daily-metric-card" id="todayDowntime" aria-busy="true">
+      <div class="kpi-label"><span>今日停机</span><span class="metric-code">数据源 - L2L</span></div>
+      <div class="production-values">
+        <div class="production-reading" data-production-site="ACX" aria-busy="true">
+          <span class="production-site-label">ACX</span>
+          <div class="kpi-value"><span data-production-value aria-live="polite">--</span><span class="kpi-unit">分钟</span></div>
+          <span class="production-site-status" role="status"></span>
+        </div>
+        <div class="production-reading" data-production-site="CNX" aria-busy="true">
+          <span class="production-site-label">CNX</span>
+          <div class="kpi-value"><span data-production-value aria-live="polite">--</span><span class="kpi-unit">分钟</span></div>
+          <span class="production-site-status" role="status"></span>
+        </div>
+      </div>
+      <div class="kpi-sub daily-metric-period" id="todayDowntimeStatus" role="status">加载中</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-label">设备 OEE</div>
-      <div class="kpi-value">87.6<span class="kpi-unit">%</span></div>
-      <div class="kpi-sub">目标 90% · <span class="down">差 2.4%</span></div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">质量合格率</div>
+      <div class="kpi-label"><span>质量合格率</span><span class="metric-code">QUALITY / 03</span></div>
       <div class="kpi-value">98.3<span class="kpi-unit">%</span></div>
       <div class="kpi-sub">较上周 <span class="up">↑ 0.5%</span></div>
+      <div class="metric-track quality-track" role="meter" aria-label="质量合格率" aria-valuemin="0" aria-valuemax="100" aria-valuenow="98.3"><span style="width:98.3%"></span></div>
+      <div class="metric-foot"><span>合格 / 不合格</span><span>98.3 / 1.7%</span></div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-label">能耗指数</div>
+      <div class="kpi-label"><span>今日用电量</span><span class="metric-code">ENERGY / 04</span></div>
       <div class="kpi-value">1,247<span class="kpi-unit">kWh</span></div>
       <div class="kpi-sub">较昨日 <span class="up">↓ 1.8%</span></div>
+      <div class="energy-reading"><span class="energy-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span>kWh / DAY</span></div>
     </div>
   </div>
 
   <!-- dashboard-charts row 1 -->
-  <div class="card-grid cols-2">
+  <div class="card-grid cols-2 production-grid">
     <div class="card">
-      <div class="card-title">近7日生产趋势</div>
-      <div class="chart-box" id="dashTrend" data-chart="true"></div>
+      <div class="panel-heading"><h2 class="card-title">近7日生产趋势</h2><span class="panel-meta">单位：米</span></div>
+      <div class="chart-box" id="dashTrend" data-chart="true" role="img" aria-label="ACX、CNX近七日生产趋势加载中" aria-busy="true"></div>
+      <div class="panel-meta" id="dashTrendStatus" role="status">加载中</div>
     </div>
     <div class="card">
-      <div class="card-title">各产线今日产量</div>
-      <div class="chart-box" id="dashLines" data-chart="true"></div>
+      <div class="panel-heading"><h2 class="card-title">产线今日产量</h2><span class="panel-meta">4 条产线 · 米</span></div>
+      <div class="chart-box" id="dashLines" data-chart="true" role="img" aria-label="四条产线今日产量加载中" aria-busy="true"></div>
+      <div class="panel-meta" id="dashLinesStatus" role="status">加载中</div>
     </div>
   </div>
 
   <!-- dashboard-charts row 2 -->
   <div class="card-grid cols-3">
     <div class="card">
-      <div class="card-title">设备运行状态</div>
+      <div class="panel-heading"><h2 class="card-title">设备运行状态</h2><span class="panel-meta">EQUIPMENT</span></div>
       <div class="chart-box" id="dashEquip" data-chart="true"></div>
     </div>
     <div class="card">
-      <div class="card-title">质量缺陷分布</div>
+      <div class="panel-heading"><h2 class="card-title">质量缺陷分布</h2><span class="panel-meta">单位 / 项</span></div>
       <div class="chart-box" id="dashQuality" data-chart="true"></div>
     </div>
     <div class="card">
-      <div class="card-title">实时告警</div>
+      <div class="panel-heading"><h2 class="card-title">告警与事件</h2><span class="alarm-count">6 条记录</span></div>
       <ul class="alarm-list" id="dashAlarms"></ul>
     </div>
   </div>
@@ -80,5 +101,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/dashboard.js' %}"></script>
+<script src="{% static 'js/dashboard.js' %}?v=production-trend-1"></script>
 {% endblock %}

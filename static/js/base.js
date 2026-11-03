@@ -7,6 +7,20 @@
 	var sidebarVisibilityIcon = sidebarVisibilityToggle.querySelector('.sidebar-visibility-icon');
 	var sidebarVisibilityLabel = sidebarVisibilityToggle.querySelector('.sidebar-visibility-label');
 
+	function setSidebarCollapsed(collapsed) {
+		document.body.classList.toggle('sidebar-collapsed', collapsed);
+		sidebarVisibilityToggle.setAttribute('aria-expanded', String(!collapsed));
+		sidebarVisibilityToggle.setAttribute('aria-label', collapsed ? '显示主导航' : '隐藏主导航');
+		sidebarVisibilityIcon.textContent = collapsed ? '☰' : '‹';
+		sidebarVisibilityLabel.textContent = collapsed ? '显示导航' : '隐藏导航';
+	}
+
+	try {
+		setSidebarCollapsed(window.localStorage.getItem('dashboard.sidebarCollapsed') === 'true');
+	} catch (error) {
+		setSidebarCollapsed(false);
+	}
+
 	function closeSidebar() {
 		sidebar.classList.remove('open');
 		overlay.classList.remove('open');
@@ -21,11 +35,10 @@
 	overlay.addEventListener('click', closeSidebar);
 	sidebarVisibilityToggle.addEventListener('click', function () {
 		var isVisible = sidebarVisibilityToggle.getAttribute('aria-expanded') === 'true';
-		document.body.classList.toggle('sidebar-collapsed', isVisible);
-		sidebarVisibilityToggle.setAttribute('aria-expanded', String(!isVisible));
-		sidebarVisibilityToggle.setAttribute('aria-label', isVisible ? '显示主导航' : '隐藏主导航');
-		sidebarVisibilityIcon.textContent = isVisible ? '☰' : '‹';
-		sidebarVisibilityLabel.textContent = isVisible ? '显示导航' : '隐藏导航';
+		setSidebarCollapsed(isVisible);
+		try {
+			window.localStorage.setItem('dashboard.sidebarCollapsed', String(isVisible));
+		} catch (error) {}
 	});
 	sidebarNav.addEventListener('click', function (event) {
 		var item = event.target.closest('.nav-item[data-page]');

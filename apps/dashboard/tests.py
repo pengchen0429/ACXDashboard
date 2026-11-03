@@ -4,6 +4,251 @@ from django.conf import settings
 from django.test import Client, TestCase
 from django.shortcuts import resolve_url
 from django.urls import reverse
+from datetime import datetime
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
+
+from django.test import SimpleTestCase, override_settings
+
+from common.l2l_api import L2LAPIError
+
+
+@override_settings(TIME_ZONE='Asia/Shanghai', USE_TZ=True)
+class TodayProductionTests(SimpleTestCase):
+	def setUp(self):
+		from django.core.cache import caches
+		self.cache_dir = TemporaryDirectory()
+		self.addCleanup(self.cache_dir.cleanup)
+		self.cache_settings = override_settings(
+			CACHES={
+				'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'},
+				'dashboard': {
+					'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+					'LOCATION': self.cache_dir.name + '/data',
+				},
+			},
+			DASHBOARD_CACHE_LOCK_DIR=self.cache_dir.name + '/locks',
+		)
+		self.cache_settings.enable()
+		self.addCleanup(self.cache_settings.disable)
+		self.cache = caches['dashboard']
+
+	@patch('apps.dashboard.views.get_daily_production')
+	@patch('apps.dashboard.views.timezone.localtime')
+	def test_sums_actual_for_current_production_day(self, mock_now, mock_daily):
+		from django.utils import timezone
+		mock_now.return_value = timezone.make_aware(datetime(2026, 11, 3, 13, 0))
+		mock_daily.return_value = [
+			{'start_date': '2026-11-03T08:30:00', 'actual': '26520.00', 'downtime_minutes': '10'},
+			{'start_date': '2026-11-03T08:30:00', 'actual': '0.1', 'downtime_minutes': '0.1'},
+			{'start_date': '2026-11-03T08:30:00', 'actual': '0.2', 'downtime_minutes': '0.2'},
+			{'start_date': '2026-11-02T08:30:00', 'actual': '999', 'downtime_minutes': '999'},
+			{'start_date': '2026-11-04T08:30:00', 'actual': '999', 'downtime_minutes': '999'},
+		]
+		response = self.client.get(reverse('dashboard-today-production'))
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.json()['actual'], '26520.30')
+		self.assertEqual(response.json()['downtime_minutes'], '10.3')
+		self.assertEqual(response['Cache-Control'], 'no-store')
+		mock_daily.assert_called_once_with('2026-11-03 08:30', '2026-11-04 08:30', timeout=15, site='ACX')
+
+	@patch('apps.dashboard.views.get_daily_production', return_value=[])
+	@patch('apps.dashboard.views.timezone.localtime')
+	def test_production_day_rolls_over_at_0830(self, mock_now, mock_daily):
+		from django.utils import timezone
+		for hour, minute, start, end in [
+			(8, 29, '2026-11-02 08:30', '2026-11-03 08:30'),
+			(8, 30, '2026-11-03 08:30', '2026-11-04 08:30'),
+		]:
+			with self.subTest(hour=hour, minute=minute):
+				mock_now.return_value = timezone.make_aware(datetime(2026, 11, 3, hour, minute))
+				response = self.client.get(reverse('dashboard-today-production'))
+				self.assertEqual(response.json()['actual'], '0')
+				self.assertEqual(response.json()['downtime_minutes'], '0')
+				mock_daily.assert_called_with(start, end, timeout=15, site='ACX')
+
+	@patch('apps.dashboard.views.get_daily_production')
+	@patch('apps.dashboard.views.timezone.localtime')
+	def test_sites_have_independent_totals_and_failures(self, mock_now, mock_daily):
+		from django.utils import timezone
+		mock_now.return_value = timezone.make_aware(datetime(2026, 11, 3, 13, 0))
+		mock_daily.side_effect = [
+			[{'start_date': '2026-11-03T08:30:00', 'actual': '123', 'downtime_minutes': '12.3'}],
+			[{'start_date': '2026-11-03T08:30:00', 'actual': '456', 'downtime_minutes': '45.6'}],
+			L2LAPIError('Unavailable'),
+			[{'start_date': '2026-11-03T08:30:00', 'actual': '789', 'downtime_minutes': '78.9'}],
+		]
+		for site, expected in [('ACX', '123'), ('CNX', '456'), ('ACX', None), ('CNX', '789')]:
+			with self.subTest(site=site, expected=expected):
+				self.cache.clear()
+				response = self.client.get(reverse('dashboard-today-production'), {'site': site})
+				mock_daily.assert_called_with('2026-11-03 08:30', '2026-11-04 08:30', timeout=15, site=site)
+				if expected is None:
+					self.assertEqual(response.status_code, 503)
+				else:
+					self.assertEqual(response.json()['site'], site)
+					self.assertEqual(response.json()['actual'], expected)
+					self.assertEqual(response.json()['downtime_minutes'], str(int(expected) / 10))
+
+	@patch('apps.dashboard.views.get_daily_production')
+	@patch('apps.dashboard.views.timezone.localtime')
+	def test_invalid_downtime_is_not_reported_as_zero(self, mock_now, mock_daily):
+		from django.utils import timezone
+		mock_now.return_value = timezone.make_aware(datetime(2026, 11, 3, 13, 0))
+		for downtime in (None, '', 'bad', 'NaN', 'Infinity'):
+			with self.subTest(downtime=downtime):
+				self.cache.clear()
+				mock_daily.return_value = [{
+					'start_date': '2026-11-03T08:30:00',
+					'actual': '123', 'downtime_minutes': downtime,
+				}]
+				self.assertEqual(self.client.get(reverse('dashboard-today-production')).status_code, 503)
+
+	@patch('apps.dashboard.views.get_daily_production')
+	def test_unknown_site_is_rejected(self, mock_daily):
+		response = self.client.get(reverse('dashboard-today-production'), {'site': 'other'})
+		self.assertEqual(response.status_code, 400)
+		mock_daily.assert_not_called()
+
+	@patch('apps.dashboard.views.get_daily_production')
+	def test_unavailable_or_invalid_data_is_not_reported_as_zero(self, mock_daily):
+		for rows in [
+			[{'actual': '10'}],
+			[{'start_date': 'bad', 'actual': '10'}],
+		]:
+			with self.subTest(rows=rows):
+				mock_daily.return_value = rows
+				self.assertEqual(self.client.get(reverse('dashboard-today-production')).status_code, 503)
+		mock_daily.side_effect = L2LAPIError('Unavailable')
+		self.assertEqual(self.client.get(reverse('dashboard-today-production')).status_code, 503)
+
+	@patch('apps.dashboard.views.get_daily_production')
+	@patch('apps.dashboard.views.timezone.localtime')
+	def test_seven_day_trend_sums_rows_and_keeps_today_metrics(self, mock_now, mock_daily):
+		from django.utils import timezone
+		mock_now.return_value = timezone.make_aware(datetime(2026, 11, 3, 13, 0))
+		mock_daily.return_value = [
+			{'start_date': stamp, 'actual': actual, 'downtime_minutes': '2'}
+			for stamp, actual in [
+				('2026-10-28T08:29:59', '999'),
+				('2026-10-28T08:30:00', '0.1'),
+				('2026-10-28T08:30:00', '0.2'),
+				('2026-11-02T23:00:00Z', '10'),
+				('2026-11-03T08:30:00', '100'),
+				('2026-11-03T08:30:00', '200'),
+				('2026-11-04T08:30:00', '999'),
+			]
+		]
+		for site in ('ACX', 'CNX'):
+			response = self.client.get(reverse('dashboard-today-production'), {'site': site, 'include_trend': '1'})
+			self.assertEqual(response.status_code, 200)
+			self.assertEqual(response.json()['trend'], [
+				{'date': day, 'actual': value} for day, value in [
+					('2026-10-28', '0.3'), ('2026-10-29', '0'), ('2026-10-30', '0'),
+					('2026-10-31', '0'), ('2026-11-01', '0'), ('2026-11-02', '10'), ('2026-11-03', '300'),
+				]
+			])
+			self.assertEqual(response.json()['actual'], '300')
+			self.assertEqual(response.json()['downtime_minutes'], '4')
+			mock_daily.assert_called_with('2026-10-28 08:30', '2026-11-04 08:30', timeout=15, site=site)
+			self.assertEqual(self.client.get(reverse('dashboard-today-production'), {'site': site, 'include_trend': '1'}).json(), response.json())
+		self.assertEqual(mock_daily.call_count, 2)
+
+	@patch('apps.dashboard.views.get_daily_production', return_value=[])
+	@patch('apps.dashboard.views.timezone.localtime')
+	def test_trend_ends_on_calendar_today_even_before_shift_start(self, mock_now, mock_daily):
+		from django.utils import timezone
+		mock_now.return_value = timezone.make_aware(datetime(2026, 11, 3, 8, 29))
+		payload = self.client.get(reverse('dashboard-today-production'), {'include_trend': '1'}).json()
+		self.assertEqual(payload['start_date'][:10], '2026-11-02')
+		self.assertEqual(len(payload['trend']), 7)
+		self.assertEqual(payload['trend'][0], {'date': '2026-10-28', 'actual': '0'})
+		self.assertEqual(payload['trend'][-1], {'date': '2026-11-03', 'actual': '0'})
+		self.assertNotIn('trend', self.client.get(reverse('dashboard-today-production')).json())
+		self.assertEqual(mock_daily.call_count, 2)
+
+	@patch('apps.dashboard.views.get_daily_production')
+	@patch('apps.dashboard.views.timezone.localtime')
+	def test_invalid_historical_actual_is_not_zero(self, mock_now, mock_daily):
+		from django.utils import timezone
+		mock_now.return_value = timezone.make_aware(datetime(2026, 11, 3, 13, 0))
+		mock_daily.return_value = [{'start_date': '2026-11-02T08:30:00', 'actual': 'NaN'}]
+		self.assertEqual(self.client.get(reverse('dashboard-today-production'), {'include_trend': '1'}).status_code, 503)
+
+	def test_post_is_not_allowed(self):
+		self.assertEqual(self.client.post(reverse('dashboard-today-production')).status_code, 405)
+
+	@patch('apps.dashboard.views.get_daily_production')
+	@patch('apps.dashboard.views.timezone.localtime')
+	def test_groups_all_lines_by_exact_area_and_site(self, mock_now, mock_daily):
+		from django.utils import timezone
+		mock_now.return_value = timezone.make_aware(datetime(2026, 11, 3, 13, 0))
+		for site, factor in [('ACX', 1), ('CNX', 2)]:
+			with self.subTest(site=site):
+				mock_daily.return_value = [
+					{'start_date': start, 'area': area, 'actual': str(actual * factor), 'downtime_minutes': '0'}
+					for start, area, actual in [
+						('2026-11-03T08:30:00', 'Weaving Process', 10),
+						('2026-11-03T08:30:00', 'Weaving Process', 20),
+						('2026-11-03T08:30:00', 'Dyeing Process', 40),
+						('2026-11-03T08:30:00', 'Finishing Process', 99),
+						('2026-11-02T08:30:00', 'Weaving Process', 999),
+						('2026-11-04T08:30:00', 'Dyeing Process', 999),
+					]
+				]
+				response = self.client.get(reverse('dashboard-today-production'), {'site': site})
+				self.assertEqual(response.status_code, 200)
+				self.assertEqual(response.json()['area_actual'], {
+					'Weaving': str(30 * factor), 'Dyeing': str(40 * factor),
+				})
+				self.assertEqual(response.json()['actual'], str(169 * factor))
+				self.assertEqual(self.client.get(reverse('dashboard-today-production'), {'site': site}).json(), response.json())
+		self.assertEqual(mock_daily.call_count, 2)
+
+	@patch('apps.dashboard.views.get_daily_production', return_value=[])
+	def test_empty_areas_are_real_zero(self, mock_daily):
+		response = self.client.get(reverse('dashboard-today-production'))
+		self.assertEqual(response.json()['area_actual'], {'Weaving': '0', 'Dyeing': '0'})
+
+	@patch('apps.dashboard.views.get_daily_production', return_value=[])
+	def test_repeated_visitors_share_cached_result(self, mock_daily):
+		for unused in range(5):
+			response = Client().get(reverse('dashboard-today-production'), {'site': 'ACX'})
+			self.assertEqual(response.status_code, 200)
+		self.assertEqual(mock_daily.call_count, 1)
+
+	@patch('apps.dashboard.views.get_daily_production', side_effect=L2LAPIError('Unavailable'))
+	def test_failure_is_cached_to_limit_retries(self, mock_daily):
+		for unused in range(5):
+			self.assertEqual(Client().get(reverse('dashboard-today-production')).status_code, 503)
+		self.assertEqual(mock_daily.call_count, 1)
+
+	@patch('apps.dashboard.views.get_daily_production')
+	def test_concurrent_cold_request_does_not_call_upstream_twice(self, mock_daily):
+		def fetch(*args, **kwargs):
+			response = Client().get(reverse('dashboard-today-production'))
+			self.assertEqual(response.status_code, 503)
+			return []
+		mock_daily.side_effect = fetch
+		self.assertEqual(self.client.get(reverse('dashboard-today-production')).status_code, 200)
+		self.assertEqual(mock_daily.call_count, 1)
+
+	@patch('apps.dashboard.views.get_daily_production', return_value=[])
+	def test_expired_result_refreshes_and_failure_uses_marked_stale_value(self, mock_daily):
+		from django.core.cache.backends.filebased import time as cache_time
+		current = cache_time.time()
+		with patch('django.core.cache.backends.filebased.time.time', return_value=current):
+			self.assertEqual(self.client.get(reverse('dashboard-today-production')).status_code, 200)
+		with patch('django.core.cache.backends.filebased.time.time', return_value=current + 31):
+			mock_daily.side_effect = L2LAPIError('Unavailable')
+			response = self.client.get(reverse('dashboard-today-production'))
+			self.assertEqual(response.status_code, 200)
+			self.assertTrue(response.json()['stale'])
+			self.assertEqual(response.json()['actual'], '0')
+			self.assertEqual(response.json()['downtime_minutes'], '0')
+			self.assertEqual(mock_daily.call_count, 2)
+		with patch('django.core.cache.backends.filebased.time.time', return_value=current + 301):
+			self.assertEqual(self.client.get(reverse('dashboard-today-production')).status_code, 503)
 
 
 class LoginTests(TestCase):

@@ -19,11 +19,13 @@ from django.urls import include, path
 from django.views.generic import RedirectView, TemplateView
 from django.conf import settings
 from django.conf.urls.static import static
+from apps.dashboard.views import today_production
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('favicon.ico', RedirectView.as_view(url=settings.STATIC_URL + 'favicon/autoliv.ico', permanent=False)),
     path('', TemplateView.as_view(template_name='dashboard/index.html'), name='dashboard'),
+    path('dashboard/today-production/', today_production, name='dashboard-today-production'),
     path('briefing/', include('apps.briefing.urls')),
     path('equipment/', include('apps.equipment.urls')),
     path('analytics/', include('apps.analytics.urls')),

@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}ACX智慧工厂运营系统{% endblock %}</title>
+  <title>{% block title %}CNSX智慧工厂运营系统{% endblock %}</title>
   <link rel="icon" href="{% static 'favicon/autoliv.ico' %}" type="image/x-icon">
   <link rel="stylesheet" href="{% static 'css/style.css' %}">
   {% block head_extra %}{% endblock %}
@@ -21,7 +21,7 @@
     <div class="sidebar-header">
       <div class="logo-icon">⚙</div>
       <div class="sidebar-brand-row">
-        <h2>ACX智慧工厂</h2>
+        <h2>CNSX智慧工厂</h2>
         {% if not user.is_authenticated %}
         <a class="sidebar-login" href="{% url 'login' %}">
           <span class="sidebar-login-icon">👤</span>
@@ -110,7 +110,7 @@
   <main class="{% block main_class %}main-content{% endblock %}">
     {% block content %}{% endblock %}
   </main>
-  {% block base_js %}<script src="{% static 'js/base.js' %}"></script>{% endblock %}
+  {% block base_js %}<script src="{% static 'js/base.js' %}?v=sidebar-state-1"></script>{% endblock %}
   {% block extra_js %}{% endblock %}
 </body>
 </html>
