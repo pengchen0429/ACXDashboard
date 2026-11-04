@@ -379,6 +379,11 @@
 .trend-summary > span { color: var(--text-muted); font-size: 11px; }
 .trend-summary b { margin-left: 6px; color: var(--accent-green); font-weight: 400; }
 .dashboard-page .chart-box { flex: 1; width: 100%; min-height: 210px; height: 210px; }
+.equipment-status-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; flex: 1; min-height: 0; }
+.equipment-status-site { display: flex; flex-direction: column; min-width: 0; }
+.equipment-status-site h3 { margin: 0 0 4px; text-align: center; font-size: 13px; font-weight: 600; }
+.dashboard-page .equipment-status-chart.chart-box { min-height: 180px; height: 180px; }
+.equipment-status-message.panel-meta { min-height: 16px; text-align: center; white-space: normal; overflow-wrap: anywhere; }
 .dashboard-page .production-grid .chart-box { min-height: 215px; }
 .dashboard-page .alarm-list { display: grid; grid-template-rows: repeat(6, minmax(36px, 1fr)); flex: 1; margin: 0; padding: 0; min-height: 216px; font-size: 11px; }
 .dashboard-page .alarm-list li { padding: 8px 0; gap: 9px; border-bottom-color: #ffffff07; line-height: 1.5; }

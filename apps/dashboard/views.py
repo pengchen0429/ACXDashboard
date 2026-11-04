@@ -59,7 +59,7 @@ def today_production(request):
 	include_trend = request.GET.get('include_trend') == '1'
 	trend_end = now.replace(hour=8, minute=30, second=0, microsecond=0) + timedelta(days=1) if include_trend else None
 	identity = repr((settings.L2L_BASE_URL, settings.L2L_AUTH, getattr(settings, 'L2L_SITE_' + site, None)))
-	key = 'production:v4:%s:%s:%s:%s' % (site, start.isoformat(), trend_end.isoformat() if trend_end else '-', hashlib.sha256(identity.encode()).hexdigest())
+	key = 'production:v6:%s:%s:%s:%s' % (site, start.isoformat(), trend_end.isoformat() if trend_end else '-', hashlib.sha256(identity.encode()).hexdigest())
 	cache = caches['dashboard']
 	cached = cache.get(key)
 	if cached is not None:
@@ -96,6 +96,9 @@ def fetch_production_total(site, start, end, *, trend_end=None):
 		downtime_minutes = Decimal('0')
 		area_actual = {'Weaving': Decimal('0'), 'Dyeing': Decimal('0')}
 		area_names = {'Weaving Process': 'Weaving', 'Dyeing Process': 'Dyeing'}
+		equipment_groups = {base + suffix: base for base in ('LOOM042', 'LOOM043') for suffix in 'ABCD'}
+		equipment_by_line = {}
+		equipment_available = True
 		for row in rows:
 			row_start = parse_datetime(row.get('start_date', ''))
 			if row_start is None:
@@ -115,6 +118,15 @@ def fetch_production_total(site, start, end, *, trend_end=None):
 					raise ValueError('Invalid daily production metric')
 				actual += value
 				downtime_minutes += downtime
+				line_id = row.get('line_id')
+				line = row.get('line')
+				identity = ('id', str(line_id)) if line_id is not None else ('line', line)
+				if site == 'ACX' and isinstance(line, str) and line.strip().upper() in equipment_groups:
+					identity = ('line', equipment_groups[line.strip().upper()])
+				if value < 0 or (line_id is None and (not isinstance(line, str) or not line.strip())):
+					equipment_available = False
+				else:
+					equipment_by_line[identity] = equipment_by_line.get(identity, False) or value > 0
 				area = area_names.get(row.get('area'))
 				if area is not None:
 					area_actual[area] += value
@@ -125,6 +137,11 @@ def fetch_production_total(site, start, end, *, trend_end=None):
 		'actual': format(actual, 'f'),
 		'downtime_minutes': format(downtime_minutes, 'f'),
 		'area_actual': {area: format(value, 'f') for area, value in area_actual.items()},
+		'equipment_status': {
+			'running': sum(equipment_by_line.values()),
+			'stopped': len(equipment_by_line) - sum(equipment_by_line.values()),
+			'total': len(equipment_by_line),
+		} if equipment_available else None,
 		'start_date': start.isoformat(),
 		'end_date': end.isoformat(),
 		'updated_at': timezone.now().isoformat(),

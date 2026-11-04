@@ -85,7 +85,18 @@
   <div class="card-grid cols-3">
     <div class="card">
       <div class="panel-heading"><h2 class="card-title">设备运行状态</h2><span class="panel-meta">EQUIPMENT</span></div>
-      <div class="chart-box" id="dashEquip" data-chart="true"></div>
+      <div class="equipment-status-grid">
+        <section class="equipment-status-site" aria-labelledby="equipmentACXTitle">
+          <h3 id="equipmentACXTitle">ACX</h3>
+          <div class="chart-box equipment-status-chart" id="dashEquipACX" data-chart="true" role="img" aria-label="ACX设备状态加载中" aria-busy="true"></div>
+          <div class="panel-meta equipment-status-message" id="dashEquipACXStatus" role="status">加载中</div>
+        </section>
+        <section class="equipment-status-site" aria-labelledby="equipmentCNXTitle">
+          <h3 id="equipmentCNXTitle">CNX</h3>
+          <div class="chart-box equipment-status-chart" id="dashEquipCNX" data-chart="true" role="img" aria-label="CNX设备状态加载中" aria-busy="true"></div>
+          <div class="panel-meta equipment-status-message" id="dashEquipCNXStatus" role="status">加载中</div>
+        </section>
+      </div>
     </div>
     <div class="card">
       <div class="panel-heading"><h2 class="card-title">质量缺陷分布</h2><span class="panel-meta">单位 / 项</span></div>
@@ -101,5 +112,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/dashboard.js' %}?v=production-trend-1"></script>
+<script src="{% static 'js/dashboard.js' %}?v=equipment-status-1"></script>
 {% endblock %}

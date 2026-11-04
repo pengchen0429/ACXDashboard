@@ -40,11 +40,13 @@
 				metrics.forEach(function(metric) { renderMetric(metric, site, data); });
 				renderAreaProduction(site, data);
 				renderProductionTrend(site, data);
+				renderEquipmentStatus(site, data);
 			})
 			.catch(function() {
 				metrics.forEach(function(metric) { renderMetric(metric, site, null); });
 				renderAreaProduction(site, null);
 				renderProductionTrend(site, null);
+				renderEquipmentStatus(site, null);
 			})
 			.finally(function() {
 				pending -= 1;
@@ -191,28 +193,40 @@ function renderAreaProduction(site, data) {
 })();
 
 /* SECTION: chart-dashboard-equip */
-(function() {
-	var el = document.getElementById('dashEquip');
-	if (!el) return;
-	var c = echarts.init(el, 'acxCockpit');
-	chartInstances['dashEquip'] = c;
-	c.setOption({
-		tooltip: { backgroundColor:'rgba(10,22,40,0.95)', borderColor:'rgba(0,212,255,0.2)', textStyle:{color:'#e0e6ed',fontSize:12},
-			formatter:function(p){return p.name+': '+p.value+' 台 ('+p.percent.toFixed(1)+'%)';} },
-		legend: { bottom:0, left:'center', textStyle:{color:'#6b7b8d',fontSize:11} },
-		graphic: [{ type:'text', left:'center', top:'38%',
-			style:{text:'54\n设备总数', textAlign:'center', fill:'#a0b4c8', fontSize:15, lineHeight:20} }],
-		series: [{ type:'pie', radius:['38%','62%'], center:['50%','44%'], avoidLabelOverlap:true,
-			label:{show:false}, labelLine:{show:false},
-			data:[
-				{value:42,name:'运行中',itemStyle:{color:'#00ffa3'}},
-				{value:6,name:'待机中',itemStyle:{color:'#00d4ff'}},
-				{value:4,name:'维护保养',itemStyle:{color:'#ffaa00'}},
-				{value:2,name:'故障停机',itemStyle:{color:'#ff4d4f'}}
-			]
-		}]
+function renderEquipmentStatus(site, data) {
+	var chartId = 'dashEquip' + site;
+	var chart = chartInstances[chartId];
+	if (!chart) return;
+	var counts = data && data.equipment_status;
+	var valid = counts && ['running', 'stopped', 'total'].every(function(key) {
+		return Number.isInteger(counts[key]) && counts[key] >= 0;
+	}) && counts.running + counts.stopped === counts.total;
+	chart.setOption({
+		graphic: [{ id: 'equipment-total', style: { text: (valid ? counts.total : '--') + '\n设备总数' } }],
+		series: [{ data: valid ? [{ name: '开机', value: counts.running }, { name: '未开机', value: counts.stopped }] : [] }]
 	});
-})();
+	document.getElementById(chartId + 'Status').textContent = !valid ? '暂不可用' : data.stale ? '数据暂未更新' : counts.total === 0 ? '无设备数据' : '';
+	var element = document.getElementById(chartId);
+	element.setAttribute('aria-busy', 'false');
+	element.setAttribute('aria-label', site + (valid ? '：开机 ' + counts.running + ' 台，未开机 ' + counts.stopped + ' 台，共 ' + counts.total + ' 台' : '设备状态暂不可用'));
+}
+
+['ACX', 'CNX'].forEach(function(site) {
+	var chartId = 'dashEquip' + site;
+	var element = document.getElementById(chartId);
+	if (!element) return;
+	var chart = echarts.init(element, 'acxCockpit');
+	chartInstances[chartId] = chart;
+	chart.setOption({
+		color: ['#249c73', '#b9c3cf'],
+		tooltip: { trigger: 'item', formatter: function(item) { return item.name + ': ' + item.value + ' 台 (' + item.percent + '%)'; } },
+		legend: { data: ['开机', '未开机'], bottom: 0, left: 'center', itemWidth: 7, itemHeight: 7, itemGap: 8, icon: 'circle', textStyle: { color: '#637184', fontSize: 10 } },
+		graphic: [{ id: 'equipment-total', type: 'text', left: 'center', top: '34%', style: { text: '--\n设备总数', align: 'center', fill: '#202b38', fontSize: 15, lineHeight: 21 } }],
+		series: [{ name: site, type: 'pie', radius: ['49%', '70%'], center: ['50%', '44%'],
+			label: { show: false }, labelLine: { show: false }, stillShowZeroSum: false,
+			emptyCircleStyle: { color: '#eef1f5' }, itemStyle: { borderWidth: 2, borderColor: '#ffffff' }, data: [] }]
+	});
+});
 
 /* SECTION: chart-dashboard-quality */
 (function() {
@@ -271,16 +285,6 @@ function renderAreaProduction(site, data) {
 		xAxis: { name: '米', nameGap: 12, nameTextStyle: { color: '#91a7b3', fontSize: 10 }, axisLabel: axisLabel, splitLine: splitLine },
 		yAxis: { axisTick: { show: false }, axisLine: { show: false }, axisLabel: { color: '#b3c5cd', fontSize: 11 } },
 		series: [{ barWidth: 12, showBackground: true, backgroundStyle: { color: '#ffffff04', borderRadius: 2 }, label: { color: '#c5d5dd' } }]
-	});
-	chartInstances.dashEquip.setOption({
-		legend: { bottom: 0, itemWidth: 7, itemHeight: 7, icon: 'circle', itemGap: 12, textStyle: { color: '#9aadb8', fontSize: 10 } },
-		graphic: [{ top: '30%', style: { text: '54\n设备总数', fill: '#e8f0f3', fontSize: 21, lineHeight: 28 } }],
-		series: [{ radius: ['53%', '69%'], center: ['50%', '42%'], itemStyle: { borderWidth: 3, borderColor: '#141d25' }, data: [
-			{ value: 42, name: '运行中', itemStyle: { color: '#54dfad' } },
-			{ value: 6, name: '待机中', itemStyle: { color: '#50d9e8' } },
-			{ value: 4, name: '维护保养', itemStyle: { color: '#efbd68' } },
-			{ value: 2, name: '故障停机', itemStyle: { color: '#f27b83' } }
-		] }]
 	});
 	chartInstances.dashQuality.setOption({
 		grid: { top: 12, bottom: 8, left: 0, right: 28, containLabel: true },

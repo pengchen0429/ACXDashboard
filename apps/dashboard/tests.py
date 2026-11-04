@@ -209,6 +209,71 @@ class TodayProductionTests(SimpleTestCase):
 	def test_empty_areas_are_real_zero(self, mock_daily):
 		response = self.client.get(reverse('dashboard-today-production'))
 		self.assertEqual(response.json()['area_actual'], {'Weaving': '0', 'Dyeing': '0'})
+		self.assertEqual(response.json()['equipment_status'], {'running': 0, 'stopped': 0, 'total': 0})
+
+	@patch('apps.dashboard.views.get_daily_production')
+	@patch('apps.dashboard.views.timezone.localtime')
+	def test_equipment_counts_unique_lines_in_current_shift_per_site(self, mock_now, mock_daily):
+		from django.utils import timezone
+		mock_now.return_value = timezone.make_aware(datetime(2026, 11, 3, 13, 0))
+		for site in ('ACX', 'CNX'):
+			with self.subTest(site=site):
+				mock_daily.return_value = [
+					{'start_date': stamp, 'line_id': line_id, 'line': line, 'actual': actual, 'downtime_minutes': '0'}
+					for stamp, line_id, line, actual in [
+						('2026-11-03T08:30:00', 1, 'Line A', '0'),
+						('2026-11-03T08:30:00', 1, 'Line A', '0.1'),
+						('2026-11-03T08:30:00', 1, 'Line A', '0'),
+						('2026-11-03T08:30:00', 2, 'Line B', '0.00'),
+						('2026-11-03T08:30:00', None, 'Line C', '20'),
+						('2026-11-02T08:30:00', 2, 'Line B', '999'),
+						('2026-11-04T08:30:00', 4, 'Line D', '999'),
+					]
+				]
+				response = self.client.get(reverse('dashboard-today-production'), {'site': site, 'include_trend': '1'})
+				self.assertEqual(response.status_code, 200)
+				self.assertEqual(response.json()['equipment_status'], {'running': 2, 'stopped': 1, 'total': 3})
+				mock_daily.assert_called_with('2026-10-28 08:30', '2026-11-04 08:30', timeout=15, site=site)
+
+	@patch('apps.dashboard.views.get_daily_production')
+	@patch('apps.dashboard.views.timezone.localtime')
+	def test_only_acx_merges_loom042_and_loom043_equipment(self, mock_now, mock_daily):
+		from django.utils import timezone
+		mock_now.return_value = timezone.make_aware(datetime(2026, 11, 3, 13, 0))
+		lines = [base + suffix for base in ('LOOM042', 'LOOM043') for suffix in 'ABCD'] + ['LOOM042E', 'LOOM044A']
+		for site in ('ACX', 'CNX'):
+			for running_line in ('LOOM042B', 'LOOM043D', None):
+				with self.subTest(site=site, running_line=running_line):
+					self.cache.clear()
+					mock_daily.return_value = [
+						{
+							'start_date': '2026-11-03T08:30:00', 'line_id': index,
+							'line': line, 'actual': '0.1' if line == running_line else '0',
+							'downtime_minutes': '1', 'area': 'Weaving Process',
+						}
+						for index, line in enumerate(lines, start=1)
+					]
+					response = self.client.get(reverse('dashboard-today-production'), {'site': site})
+					self.assertEqual(response.status_code, 200)
+					total = 4 if site == 'ACX' else 10
+					running = 1 if running_line else 0
+					self.assertEqual(response.json()['equipment_status'], {'running': running, 'stopped': total - running, 'total': total})
+					self.assertEqual(response.json()['actual'], '0.1' if running_line else '0')
+					self.assertEqual(response.json()['area_actual']['Weaving'], '0.1' if running_line else '0')
+					self.assertEqual(response.json()['downtime_minutes'], '10')
+
+	@patch('apps.dashboard.views.get_daily_production')
+	@patch('apps.dashboard.views.timezone.localtime')
+	def test_unidentified_or_negative_equipment_is_not_reported_as_stopped(self, mock_now, mock_daily):
+		from django.utils import timezone
+		mock_now.return_value = timezone.make_aware(datetime(2026, 11, 3, 13, 0))
+		for fields in ({'actual': '0'}, {'line_id': 1, 'actual': '-1'}):
+			with self.subTest(fields=fields):
+				self.cache.clear()
+				mock_daily.return_value = [{'start_date': '2026-11-03T08:30:00', 'downtime_minutes': '0', **fields}]
+				response = self.client.get(reverse('dashboard-today-production'))
+				self.assertEqual(response.status_code, 200)
+				self.assertIsNone(response.json()['equipment_status'])
 
 	@patch('apps.dashboard.views.get_daily_production', return_value=[])
 	def test_repeated_visitors_share_cached_result(self, mock_daily):
