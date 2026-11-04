@@ -1,0 +1,163 @@
+html {
+    color-scheme: light;
+    --light-bg: #f5f7fa;
+    --light-panel: #ffffff;
+    --light-border: #dde3ea;
+    --light-text: #202b38;
+    --light-muted: #637184;
+    --light-blue: #2463c5;
+    --light-green: #17815b;
+    --light-orange: #a76b13;
+    --light-red: #cc4249;
+}
+
+html body.light-theme,
+html .dashboard-page,
+html .briefing-page,
+html .equipment-page,
+html .dpmu-page,
+html .light-theme .sidebar,
+html .light-theme .sidebar-visibility-toggle {
+    --bg: var(--light-bg);
+    --bg-dark: var(--light-bg);
+    --sidebar: var(--light-panel);
+    --bg-sidebar: var(--light-panel);
+    --bg-card: var(--light-panel);
+    --border: var(--light-border);
+    --text: var(--light-text);
+    --text-primary: var(--light-text);
+    --muted: var(--light-muted);
+    --text-secondary: var(--light-muted);
+    --text-muted: var(--light-muted);
+    --accent: var(--light-blue);
+    --accent-cyan: var(--light-blue);
+    --accent-blue: var(--light-blue);
+    --accent-green: var(--light-green);
+    --accent-orange: var(--light-orange);
+    --accent-purple: #7754b3;
+    --accent-red: var(--light-red);
+    background: var(--light-bg);
+    color: var(--light-text);
+    color-scheme: light;
+}
+
+html .light-theme .sidebar,
+html .light-theme .sidebar-visibility-toggle,
+html .menu-toggle { background: var(--light-panel); }
+html .sidebar { box-shadow: 1px 0 0 #e7ebf0; }
+html .logo-icon { background: #2463c5; box-shadow: none; animation: none; }
+html .nav-item:hover,
+html .nav-item.active { background: #edf3fd; color: var(--light-blue); }
+html .nav-item.active { font-weight: 600; }
+html .sidebar-login { background: #f2f6fd; border-color: #cad9f0; }
+html .sidebar-login:hover,
+html .sidebar-visibility-toggle:hover { background: #eaf1fc; }
+html .sidebar-footer { color: var(--light-muted); }
+
+html .dashboard-page .page-container {
+    background-image: none;
+    scrollbar-color: #c5ceda transparent;
+}
+html .topbar { background: #fff; }
+html .light-theme :is(.dash-header, .dashboard-header) {
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--light-border);
+    border-radius: 0;
+}
+html .light-theme :is(.dash-title, .dashboard-header h1, .factory-heading h1) {
+    background: none;
+    color: var(--light-text);
+    -webkit-text-fill-color: currentColor;
+    letter-spacing: 0;
+}
+html .factory-heading h1 > span { color: var(--light-muted); border-color: #ccd5e0; }
+html .light-theme :is(.dash-sub, .dash-meta, .data-summary, .data-cutoff, .footer-note,
+    .factory-context, .factory-eyebrow, .dashboard-footer, .topbar-left .breadcrumb,
+    .trend-status, .date-field > span, .date-separator) { color: var(--light-muted); letter-spacing: 0; }
+html .light-theme .live-clock { color: var(--light-green); letter-spacing: 0; }
+
+html .light-theme :is(.card, .kpi-card, .kpi-detail-card) {
+    background: var(--light-panel);
+    border: 1px solid var(--light-border);
+    border-radius: 8px;
+    box-shadow: 0 2px 6px #202b3805;
+}
+html .dashboard-page .daily-metric-card {
+    background: linear-gradient(115deg, #fff, #f1f7fc);
+    border-color: #cdddea;
+    box-shadow: 0 2px 6px #202b3805;
+}
+html .dashboard-page .daily-metric-card:hover { border-color: #a9c2df; box-shadow: 0 3px 10px #202b380a; }
+html .dashboard-page .daily-metric-card::before { background: #2463c5; opacity: .35; }
+html .dashboard-page .card::after { display: none; }
+html .light-theme :is(.card-title, .safety-chart-header h2, .kpi-tag, .kpi-label) { color: var(--light-text); letter-spacing: 0; }
+html .light-theme :is(.kpi-card .kpi-value, .production-reading .kpi-value, .dpmu-details strong,
+    .safety-area-metrics strong) { color: var(--light-text); }
+html .light-theme :is(.kpi-unit, .kpi-value .unit, .metric-code, .energy-reading, .daily-metric-period,
+    .safety-area-metrics, .dpmu-detail-row, .safety-time-heading, .chart-legend button,
+    .alarm-time, .alarm-msg) { color: var(--light-muted); }
+html .safety-area-name { color: #435369; }
+html .production-reading { --site-color: #2463c5; }
+html .production-reading[data-production-site="CNX"] { --site-color: #a76b13; }
+html .light-theme :is(.production-reading, .daily-metric-period, .safety-summary,
+    .safety-area-row, .dpmu-detail-row, .alarm-list li) { border-color: var(--light-border); }
+html .production-site-label::before { box-shadow: none; }
+html #safety-kpi { --kpi-value-color: #17815b; --kpi-letter-color: #17815b; --kpi-muted-color: #637184; }
+html #dpmu-kpi { --kpi-value-color: #2463c5; --kpi-letter-color: #2463c5; --kpi-muted-color: #637184; }
+html #improvement-kpi { --kpi-value-color: #7754b3; --kpi-letter-color: #7754b3; --kpi-muted-color: #637184; }
+html .light-theme :is(.up, .safety-area-metrics .safety-area-completed) { color: var(--light-green); }
+html .light-theme :is(.down, .production-site-status) { color: var(--light-red); }
+html .light-theme .flat { color: var(--light-muted); }
+html .light-theme .safety-area-metrics .safety-area-unclosed { color: var(--light-orange); }
+html .metric-track, html .prog-bar { background: #e8edf3; }
+html .quality-track > span { background: #d29a35; }
+html .energy-bars i { background: #597fc7; }
+html .light-theme :is(.demo-badge, .demo-tag, .alarm-count) { background: #fff6e6; border-color: #ead4a6; color: #996312; letter-spacing: 0; }
+
+html :is(.date-field input, .safety-time-field input, .filter-group select,
+    .filter-group input[type="datetime-local"], .filter-group select option, .form-input) {
+    background: #fff;
+    border-color: #cbd4df;
+    color: var(--light-text);
+    color-scheme: light;
+}
+html :is(.date-field input, .safety-time-field input, .filter-group select,
+    .filter-group input, .form-input):focus-visible {
+    outline: 2px solid #2463c5;
+    outline-offset: 2px;
+}
+html .date-field input[aria-invalid="true"] { border-color: var(--light-red); }
+html .light-theme .filter-group label { color: var(--light-muted); letter-spacing: 0; }
+html .light-theme .filter-bar { background: transparent; border-color: var(--light-border); border-radius: 0; }
+html .safety-time-actions button { background: #fff; color: #435369; border-color: #cbd4df; }
+html .light-theme :is(.safety-time-query, .trend-query, .filter-btn, .login-btn) {
+    background: #2463c5;
+    color: #fff;
+    border-color: #2463c5;
+    letter-spacing: 0;
+}
+html .light-theme :is(.safety-time-query, .trend-query, .filter-btn, .login-btn):hover { background: #1b52aa; }
+html .light-theme .tab-btn { background: #eef1f5; color: #526174; border-color: #d7dfe9; letter-spacing: 0; }
+html .light-theme .tab-btn:hover { background: #e4ecf8; color: var(--light-blue); }
+html .light-theme .tab-btn.active { background: #2463c5; color: #fff; border-color: #2463c5; box-shadow: none; }
+html .light-theme .data-table th { background: #f3f6fa; color: #526174; border-color: var(--light-border); }
+html .light-theme .data-table td { color: #344356; border-color: #e8edf3; }
+html .light-theme .data-table tr:hover td { background: #f5f8fc; }
+html .light-theme .rank-other { background: #e8edf3; color: #526174; }
+
+html .login-main {
+    background-image: linear-gradient(#2463c508 1px, transparent 1px), linear-gradient(90deg, #2463c508 1px, transparent 1px);
+    background-size: 40px 40px;
+}
+html .login-main::before { display: none; }
+html .login-card { background: #fff; border-color: var(--light-border); border-radius: 8px; box-shadow: 0 12px 40px #202b3810; backdrop-filter: none; }
+html .login-page .logo-icon { border-radius: 8px; }
+html .login-page .logo-title { color: var(--light-text); }
+html .login-page :is(.logo-subtitle, .form-label, .input-icon, .footer-info) { color: var(--light-muted); }
+html .login-page .form-input:focus { background: #fff; border-color: #2463c5; box-shadow: 0 0 0 3px #2463c515; }
+html .login-page .form-input::placeholder { color: #7a8798; }
+html .login-page .footer-info { border-color: var(--light-border); }
+html .login-page .footer-info a { color: var(--light-blue); }
+html .login-btn:hover { box-shadow: 0 4px 12px #2463c526; }
+html .login-page .error-message { color: #b9303a; background: #fff1f2; }

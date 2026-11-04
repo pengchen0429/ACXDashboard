@@ -8,8 +8,10 @@
   <link rel="icon" href="{% static 'favicon/autoliv.ico' %}" type="image/x-icon">
   <link rel="stylesheet" href="{% static 'css/style.css' %}">
   {% block head_extra %}{% endblock %}
+  <link rel="stylesheet" href="{% static 'css/light-theme.css' %}?v=1">
+  <script src="{% static 'js/light-theme.js' %}?v=1"></script>
 </head>
-<body class="{% block body_class %}{% endblock %}">
+<body class="light-theme {% block body_class %}{% endblock %}">
   {% block navigation %}
   <button class="menu-toggle" id="menuToggle" type="button" aria-label="打开导航菜单" aria-expanded="false">☰</button>
   <div class="sidebar-overlay" id="sidebarOverlay"></div>
