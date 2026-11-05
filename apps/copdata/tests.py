@@ -104,12 +104,26 @@ class CopDataApiTests(SimpleTestCase):
 	@patch('apps.copdata.views.get_cop_data')
 	def test_invalid_filters_do_not_query(self, query):
 		for params in ({}, dict(self.params, factory='OTHER'),
-					   dict(self.params, date_from='2026-11-06'),
-					   dict(self.params, date_from='2025-01-01')):
+					   dict(self.params, date_from='2026-11-06')):
 			with self.subTest(params=params):
 				response = copdata_data(self.factory.get('/copdata/data/', params))
 				self.assertEqual(response.status_code, 400)
 		query.assert_not_called()
+
+	@patch('apps.copdata.views.get_cop_data', return_value=[])
+	def test_multi_year_ranges_are_allowed(self, query):
+		for start, end, end_exclusive in [
+			('2022-01-01', '2025-12-31', '2026-01-01'),
+			('2020-02-29', '2024-02-29', '2024-03-01'),
+			('2020-01-01', '2026-11-05', '2026-11-06'),
+		]:
+			with self.subTest(start=start, end=end):
+				query.reset_mock()
+				response = copdata_data(self.factory.get('/copdata/data/', {
+					'factory': 'ACX', 'date_from': start, 'date_to': end,
+				}))
+				self.assertEqual(response.status_code, 200)
+				query.assert_called_once_with('ACX', start_time=start, end_time=end_exclusive)
 
 	@patch('apps.copdata.views.get_cop_data', side_effect=DatabaseError('internal details'))
 	def test_database_error_does_not_leak_details(self, query):

@@ -36,8 +36,6 @@ def copdata_data(request):
 		return JsonResponse({'error': '请选择有效的开始和结束日期'}, status=400)
 	if start > end:
 		return JsonResponse({'error': '开始日期不能晚于结束日期'}, status=400)
-	if (end - start).days >= 366:
-		return JsonResponse({'error': '单次查询时间范围不能超过 366 天'}, status=400)
 	try:
 		records = []
 		for factory in factories:

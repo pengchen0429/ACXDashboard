@@ -20,6 +20,7 @@ var defaultDateTo = document.getElementById('dateTo').value;
 var requestController;
 var requestVersion = 0;
 var isLoading = false;
+var isExporting = false;
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, function(character) {
@@ -249,7 +250,7 @@ function doReset() {
 
 function setQueryButtons() {
   document.getElementById('btnQuery').disabled = isLoading;
-  document.getElementById('btnExport').disabled = isLoading || !filteredData.length;
+  document.getElementById('btnExport').disabled = isLoading || isExporting || !filteredData.length;
   document.getElementById('btnCopy').disabled = isLoading || !filteredData.length;
   document.querySelector('.copdata-content').setAttribute('aria-busy', String(isLoading));
 }
@@ -453,28 +454,53 @@ function updateAll() {
 }
 
 /* SECTION: export */
-document.getElementById('btnExport').addEventListener('click', function() {
+document.getElementById('btnExport').addEventListener('click', async function() {
   if (filteredData.length === 0) { alert('没有数据可导出'); return; }
+  if (isExporting) return;
   var headers = ['送检时间','工厂','产品编码','车号','强力(N)','宽度(mm)','厚度(mm)','干摩','湿摩','颜色','甲醇(mg/kg)','延伸率11.12KN(%)','ΔL','ΔA','ΔB'];
   var keys = ['BegDate','Factory','ProductNO','BatchCode','decVal4','decVal1','decVal2','decVal7','decVal8','decVal9','decVal12','decVal29','decVal19','decVal20','decVal21'];
-  var csv = '\uFEFF' + headers.join(',') + '\n';
-  for (var i = 0; i < filteredData.length; i++) {
-    var row = [];
-    for (var j = 0; j < keys.length; j++) {
-      var value = filteredData[i][keys[j]];
-      var text = value == null ? '' : String(value);
-      if (typeof value === 'string' && /^[\s]*[=+@-]/.test(text)) text = "'" + text;
-      row.push('"' + text.replace(/"/g, '""') + '"');
-    }
-    csv += row.join(',') + '\n';
+  var records = filteredData.slice();
+  var button = document.getElementById('btnExport');
+  var originalLabel = button.textContent;
+  isExporting = true;
+  button.textContent = '正在导出...';
+  setQueryButtons();
+  try {
+    var workbook = new ExcelJS.Workbook();
+    var sheet = workbook.addWorksheet('COP检测数据', {
+      views: [{state: 'frozen', ySplit: 1}]
+    });
+    sheet.columns = headers.map(function(header, index) {
+      return {header: header, key: keys[index], width: index === 0 ? 22 : (index < 4 ? 20 : 18)};
+    });
+    records.forEach(function(record) {
+      sheet.addRow(keys.map(function(key, index) {
+        var value = record[key];
+        return index < 4 ? String(value == null ? '' : value) : (value == null ? null : value);
+      }));
+    });
+    sheet.getRow(1).font = {bold: true, color: {argb: 'FFFFFFFF'}};
+    sheet.getRow(1).fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: 'FF2463C5'}};
+    sheet.autoFilter = {from: {row: 1, column: 1}, to: {row: 1, column: keys.length}};
+    var buffer = await workbook.xlsx.writeBuffer();
+    var blob = new Blob([buffer], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement('a');
+    link.href = url;
+    link.download = 'COP数据_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+  } catch (error) {
+    var status = document.getElementById('queryStatus');
+    status.textContent = 'Excel导出失败，请稍后重试或缩小查询范围';
+    status.dataset.state = 'error';
+  } finally {
+    isExporting = false;
+    button.textContent = originalLabel;
+    setQueryButtons();
   }
-  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement('a');
-  a.href = url;
-  a.download = 'COP数据_' + new Date().toISOString().slice(0, 10) + '.csv';
-  a.click();
-  URL.revokeObjectURL(url);
 });
 
 /* SECTION: copy */
