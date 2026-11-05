@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'apps.accounts',
     'apps.organization',
     'apps.l2l',
+    'apps.copdata',
 ]
 
 MIDDLEWARE = [

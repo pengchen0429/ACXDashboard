@@ -30,6 +30,7 @@ urlpatterns = [
     path('equipment/', include('apps.equipment.urls')),
     path('analytics/', include('apps.analytics.urls')),
     path('dpmu/', include('apps.dpmu.urls')),
+    path('copdata/', include('apps.copdata.urls')),
     path('', include('apps.accounts.urls')),
 ]
 

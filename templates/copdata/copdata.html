@@ -1,0 +1,163 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}COP数据查询看板 - CNSX数据看板{% endblock %}
+{% block body_class %}copdata-page{% endblock %}
+{% block main_class %}main-content copdata-content{% endblock %}
+{% block head_extra %}
+<link rel="stylesheet" href="{% static 'css/copdata.css' %}?v=2">
+<script src="{% static 'js/echarts.min.js' %}"></script>
+{% endblock %}
+
+{% block content %}
+<!-- SECTION: header -->
+<div class="header">
+  <h1>COP 数据查询看板</h1>
+  <div class="clock" id="clock"></div>
+</div>
+
+<div class="main" id="copDataMain" data-url="{% url 'copdata-data' %}">
+  <!-- SECTION: filter-bar -->
+  <div class="filter-bar">
+    <div class="filter-bar-title">
+      <span>🔍</span> 筛选条件
+    </div>
+    <div class="filter-row">
+      <!-- 工厂 -->
+      <div class="filter-group filter-group-compact">
+        <div class="filter-label">工厂</div>
+        <div class="multi-select" id="filterFactory" data-primary-action>
+          <div class="multi-select-trigger" id="triggerFactory">选择工厂</div>
+          <div class="multi-select-dropdown" id="dropdownFactory">
+            <input class="multi-select-search" placeholder="搜索工厂..." data-target="Factory">
+            <div class="options-list" id="optionsFactory"></div>
+          </div>
+        </div>
+      </div>
+      <!-- 送检时间 -->
+      <div class="filter-group">
+        <div class="filter-label">送检时间</div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input type="date" class="date-input" id="dateFrom" value="{{ date_from }}">
+          <span style="color:var(--text-muted);font-size:12px;">至</span>
+          <input type="date" class="date-input" id="dateTo" value="{{ date_to }}">
+        </div>
+      </div>
+      <!-- 产品编码 -->
+      <div class="filter-group">
+        <div class="filter-label">产品编码</div>
+        <div class="multi-select" id="filterProduct">
+          <div class="multi-select-trigger" id="triggerProduct">选择产品编码</div>
+          <div class="multi-select-dropdown" id="dropdownProduct">
+            <input class="multi-select-search" placeholder="搜索产品编码..." data-target="Product">
+            <div class="options-list" id="optionsProduct"></div>
+          </div>
+        </div>
+      </div>
+      <!-- 车号 -->
+      <div class="filter-group filter-group-compact">
+        <div class="filter-label">车号</div>
+        <div class="multi-select" id="filterBatch">
+          <div class="multi-select-trigger" id="triggerBatch">选择车号</div>
+          <div class="multi-select-dropdown" id="dropdownBatch">
+            <input class="multi-select-search" placeholder="搜索车号..." data-target="Batch">
+            <div class="multi-select-actions">
+              <button type="button" data-select-all>全选</button>
+              <button type="button" data-select-clear>取消全选</button>
+            </div>
+            <div class="options-list" id="optionsBatch"></div>
+          </div>
+        </div>
+      </div>
+      <!-- 按钮 -->
+      <div class="btn-group">
+        <button class="btn btn-primary" id="btnQuery" data-primary-action>🔍 查询</button>
+        <button class="btn btn-secondary" id="btnReset">↺ 重置</button>
+        <button class="btn btn-export" id="btnExport">📥 导出</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="queryStatus" class="query-status" role="status" aria-live="polite"></div>
+
+  <!-- SECTION: stats-row -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">查询记录数</div>
+      <div class="stat-value" id="statCount">0</div>
+      <div class="stat-sub">条</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">平均强力 (N)</div>
+      <div class="stat-value" id="statStrength">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">平均宽度 (mm)</div>
+      <div class="stat-value" id="statWidth">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">平均厚度 (mm)</div>
+      <div class="stat-value" id="statThickness">0</div>
+    </div>
+  </div>
+
+  <!-- SECTION: charts-row -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="chart-card-title">强力趋势 (decVal4)</div>
+      <div class="chart-box" id="chartStrength" data-chart="true"></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-card-title">色差分布 (ΔL / ΔA / ΔB)</div>
+      <div class="chart-box" id="chartColor" data-chart="true"></div>
+    </div>
+  </div>
+
+  <!-- SECTION: table-card -->
+  <div class="table-card">
+    <div class="table-header">
+      <div class="table-title">
+        <span>📋</span> COP 检测数据
+        <span class="count" id="tableCount"></span>
+      </div>
+      <div class="table-actions">
+        <button class="btn btn-secondary" style="height:34px;padding:0 14px;font-size:12px;" id="btnCopy">📋 复制</button>
+      </div>
+    </div>
+    <div class="table-wrapper">
+      <table class="data-table" id="dataTable">
+        <thead>
+          <tr>
+            <th data-col="index">#</th>
+            <th data-col="BegDate">送检时间 <span class="sort-icon">⇅</span></th>
+            <th data-col="Factory">工厂 <span class="sort-icon">⇅</span></th>
+            <th data-col="ProductNO">产品编码 <span class="sort-icon">⇅</span></th>
+            <th data-col="BatchCode">车号 <span class="sort-icon">⇅</span></th>
+            <th data-col="decVal4">强力(N) <span class="sort-icon">⇅</span></th>
+            <th data-col="decVal1">宽度(mm) <span class="sort-icon">⇅</span></th>
+            <th data-col="decVal2">厚度(mm) <span class="sort-icon">⇅</span></th>
+            <th data-col="decVal7">干摩 <span class="sort-icon">⇅</span></th>
+            <th data-col="decVal8">湿摩 <span class="sort-icon">⇅</span></th>
+            <th data-col="decVal9">颜色 <span class="sort-icon">⇅</span></th>
+            <th data-col="decVal12">甲醇(mg/kg) <span class="sort-icon">⇅</span></th>
+            <th data-col="decVal29">延伸率11.12KN(%) <span class="sort-icon">⇅</span></th>
+            <th data-col="decVal19">ΔL <span class="sort-icon">⇅</span></th>
+            <th data-col="decVal20">ΔA <span class="sort-icon">⇅</span></th>
+            <th data-col="decVal21">ΔB <span class="sort-icon">⇅</span></th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+    <!-- Pagination -->
+    <div class="pagination">
+      <span id="pageInfo">共 0 条</span>
+      <div class="page-btns" id="pageBtns"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/copdata.js' %}?v=4"></script>
+{% endblock %}

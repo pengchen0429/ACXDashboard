@@ -157,3 +157,42 @@ WHERE m.is_active = 1
 		results.append({'machine_id': current_id, 'machine_code': tags[0][1],
 						'values': dict(zip(columns, values)), 'saved': not dry_run})
 	return results
+
+
+def get_cop_data(factory='ACX', start_time=None, end_time=None,
+				 product_nos=None, batch_codes=None):
+	"""Return COP records for one factory, filtered by [start_time, end_time)."""
+	factory = factory.strip().upper()
+	database_aliases = {'ACX': 'mesaq', 'CNX': 'mesaq_cnx'}
+	if factory not in database_aliases:
+		raise ValueError('factory must be ACX or CNX')
+	query = """
+SELECT sample.BegDate, product.ProductNO, sample.BatchNo AS BatchCode,
+       sample.decVal4, sample.decVal1, sample.decVal2,
+       sample.decVal7, sample.decVal8, sample.decVal9,
+       sample.decVal12, sample.decVal29,
+       sample.decVal19, sample.decVal20, sample.decVal21
+FROM dbo.tabProduct AS product
+INNER JOIN dbo.tabCrtCode AS code ON product.ID = code.DuctID
+INNER JOIN dbo.tabcrtCodeSub AS sample ON code.TmpCode = sample.TmpCode
+WHERE 1 = 1
+"""
+	params = []
+	if start_time is not None:
+		query += ' AND sample.BegDate >= %s'
+		params.append(start_time)
+	if end_time is not None:
+		query += ' AND sample.BegDate < %s'
+		params.append(end_time)
+	for column, values in (('product.ProductNO', product_nos),
+						  ('sample.BatchNo', batch_codes)):
+		if values:
+			if isinstance(values, str):
+				values = [values]
+			query += ' AND ' + column + ' IN (' + ', '.join(['%s'] * len(values)) + ')'
+			params.extend(values)
+	query += ' ORDER BY sample.BegDate DESC, product.ProductNO, sample.BatchNo'
+	with connections[database_aliases[factory]].cursor() as cursor:
+		cursor.execute(query, params)
+		columns = [column[0] for column in cursor.description]
+		return [dict(zip(columns, row), Factory=factory) for row in cursor.fetchall()]
