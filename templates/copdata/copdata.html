@@ -5,7 +5,7 @@
 {% block body_class %}copdata-page{% endblock %}
 {% block main_class %}main-content copdata-content{% endblock %}
 {% block head_extra %}
-<link rel="stylesheet" href="{% static 'css/copdata.css' %}?v=2">
+<link rel="stylesheet" href="{% static 'css/copdata.css' %}?v=3">
 <script src="{% static 'js/echarts.min.js' %}"></script>
 {% endblock %}
 
@@ -35,9 +35,9 @@
         </div>
       </div>
       <!-- 送检时间 -->
-      <div class="filter-group">
+      <div class="filter-group filter-group-date">
         <div class="filter-label">送检时间</div>
-        <div style="display:flex; gap:8px; align-items:center;">
+        <div class="date-range">
           <input type="date" class="date-input" id="dateFrom" value="{{ date_from }}">
           <span style="color:var(--text-muted);font-size:12px;">至</span>
           <input type="date" class="date-input" id="dateTo" value="{{ date_to }}">

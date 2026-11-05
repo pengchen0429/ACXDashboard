@@ -75,6 +75,19 @@
     min-width: 150px;
     flex: 0 0 150px;
   }
+  .filter-group-date {
+    min-width: 320px;
+    flex: 2 1 320px;
+  }
+}
+.date-range {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+.date-range .date-input {
+  min-width: 0;
 }
 .filter-label {
   font-size: 12px;
@@ -317,11 +330,12 @@
 /* SECTION: charts-row */
 .charts-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
   margin-bottom: 20px;
 }
 .chart-card {
+  min-width: 0;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 12px;
