@@ -59,7 +59,7 @@ def today_production(request):
 	include_trend = request.GET.get('include_trend') == '1'
 	trend_end = now.replace(hour=8, minute=30, second=0, microsecond=0) + timedelta(days=1) if include_trend else None
 	identity = repr((settings.L2L_BASE_URL, settings.L2L_AUTH, getattr(settings, 'L2L_SITE_' + site, None)))
-	key = 'production:v6:%s:%s:%s:%s' % (site, start.isoformat(), trend_end.isoformat() if trend_end else '-', hashlib.sha256(identity.encode()).hexdigest())
+	key = 'production:v7:%s:%s:%s:%s' % (site, start.isoformat(), trend_end.isoformat() if trend_end else '-', hashlib.sha256(identity.encode()).hexdigest())
 	cache = caches['dashboard']
 	cached = cache.get(key)
 	if cached is not None:
@@ -105,6 +105,9 @@ def fetch_production_total(site, start, end, *, trend_end=None):
 				raise ValueError('Missing production start_date')
 			if timezone.is_naive(row_start):
 				row_start = timezone.make_aware(row_start, timezone.get_current_timezone())
+			row_start = row_start.astimezone(timezone.get_current_timezone())
+			if (row_start.hour, row_start.minute, row_start.second, row_start.microsecond) == (0, 0, 0, 0):
+				row_start = row_start.replace(hour=8, minute=30)
 			if trend_end and query_start <= row_start < trend_end:
 				value = Decimal(str(row['actual']))
 				if not value.is_finite():

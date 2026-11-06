@@ -52,6 +52,60 @@ class TodayProductionTests(SimpleTestCase):
 		self.assertEqual(response['Cache-Control'], 'no-store')
 		mock_daily.assert_called_once_with('2026-11-03 08:30', '2026-11-04 08:30', timeout=15, site='ACX')
 
+	@patch('apps.dashboard.views.get_daily_production')
+	@patch('apps.dashboard.views.timezone.localtime')
+	def test_midnight_daily_labels_belong_to_same_production_date(self, mock_now, mock_daily):
+		from django.utils import timezone
+		mock_now.return_value = timezone.make_aware(datetime(2026, 11, 3, 13, 0))
+		mock_daily.return_value = [
+			{'start_date': stamp, 'actual': actual, 'downtime_minutes': downtime, 'area': area, 'line_id': line_id}
+			for stamp, actual, downtime, area, line_id in [
+				('2026-10-28T00:00:00', '10', '1', 'Weaving Process', 1),
+				('2026-11-02T00:00:00', '20', '2', 'Weaving Process', 1),
+				('2026-11-03T00:00:00', '100', '3', 'Weaving Process', 1),
+				('2026-11-02T16:00:00Z', '200', '4', 'Dyeing Process', 2),
+				('2026-11-03T00:00:00+08:00', '0', '5', 'Weaving Process', 3),
+				('2026-11-04T00:00:00', '999', '999', 'Weaving Process', 4),
+			]
+		]
+		for site in ('ACX', 'CNX'):
+			with self.subTest(site=site):
+				for include_trend in ('0', '1'):
+					response = self.client.get(reverse('dashboard-today-production'), {'site': site, 'include_trend': include_trend})
+					self.assertEqual(response.status_code, 200)
+					payload = response.json()
+					self.assertEqual(payload['actual'], '300')
+					self.assertEqual(payload['downtime_minutes'], '12')
+					self.assertEqual(payload['area_actual'], {'Weaving': '100', 'Dyeing': '200'})
+					self.assertEqual(payload['equipment_status'], {'running': 2, 'stopped': 1, 'total': 3})
+					if include_trend == '1':
+						self.assertEqual(payload['trend'], [
+							{'date': day, 'actual': actual} for day, actual in [
+								('2026-10-28', '10'), ('2026-10-29', '0'), ('2026-10-30', '0'),
+								('2026-10-31', '0'), ('2026-11-01', '0'), ('2026-11-02', '20'), ('2026-11-03', '300'),
+							]
+						])
+
+	@patch('apps.dashboard.views.get_daily_production')
+	@patch('apps.dashboard.views.timezone.localtime')
+	def test_midnight_daily_labels_before_shift_start_keep_previous_day(self, mock_now, mock_daily):
+		from django.utils import timezone
+		mock_now.return_value = timezone.make_aware(datetime(2026, 11, 3, 8, 29))
+		mock_daily.return_value = [
+			{'start_date': '2026-11-02T00:00:00', 'actual': '100', 'downtime_minutes': '2'},
+			{'start_date': '2026-11-03T00:00:00', 'actual': '200', 'downtime_minutes': '3'},
+		]
+		for include_trend in ('0', '1'):
+			payload = self.client.get(reverse('dashboard-today-production'), {'include_trend': include_trend}).json()
+			self.assertEqual(payload['start_date'][:10], '2026-11-02')
+			self.assertEqual(payload['actual'], '100')
+			self.assertEqual(payload['downtime_minutes'], '2')
+			if include_trend == '1':
+				self.assertEqual(payload['trend'][-2:], [
+					{'date': '2026-11-02', 'actual': '100'},
+					{'date': '2026-11-03', 'actual': '200'},
+				])
+
 	@patch('apps.dashboard.views.get_daily_production', return_value=[])
 	@patch('apps.dashboard.views.timezone.localtime')
 	def test_production_day_rolls_over_at_0830(self, mock_now, mock_daily):
