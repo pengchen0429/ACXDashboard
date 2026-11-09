@@ -1,3 +1,44 @@
+# 产线产量详情
+
+- 点击运营总览的“今日产量”卡片进入 `/dashboard/production/`，模板为 `templates/dashboard/production_detail.html`，继承 `base.html`；入口为原生链接，可通过键盘、右键或新标签页访问。
+- 顶部支持工厂 ACX/CNX、区域和产线名称搜索。两厂各有 `Weaving Process`、`Dyeing Process`、`Finishing Process` 三个区域，共六个工厂/区域组合；三个同名选项在 `apps/dashboard/views.py` 的 `PRODUCTION_AREAS` 配置。工厂筛选决定所属工厂，即使某区域当天没有数据仍保留选项，不生成假设备。
+- 详情页调用只读接口 `/dashboard/today-production/?site=ACX&include_lines=1`。服务端按当前 08:30 生产日筛选，午夜日报标签归属同日 08:30；按原始 line ID 与区域合并多条日报，使用 Decimal 累加 `demand` 和 `actual`，不合并 LOOM042/043 的 A–D 子线。
+- 每个 line 一张卡片，Demand 和 Actual 用两条横向柱展示，卡片内共享 `max(demand, actual)` 尺度，单位与总览一致为米；0 是真实零值，Actual 超过 Demand 时不截断。另显示达成率，Demand 为 0 时显示“未设置需求”。
+- 当前日报的 `products` 是产品数量，并非产品名称；产线接口的 `defaultproduct` 也不能代表当前生产产品。尚未取得可靠的当前产品查询数据，卡片的“生产产品”显示 `--`，顶部明确提示，不用数量或默认产品冒充实际产品。需要可用的当前产品查询接口才能补齐该字段。
+- 工厂切换重新请求并清空原工厂数据，区域筛选和搜索在本地完成。筛选保留在 URL，搜索只保留在当前页面。每轮请求结束 30 秒后后台刷新，20 秒中止等待；失败保留当前工厂的旧卡片并提示，恢复成功后清除过期提示。卡片节点复用，图条平滑更新，并尊重减少动态效果设置。
+- `include_lines=1` 与总览缓存独立，认证只在服务端读取。不调用写入接口 `record_pitch_details`，不执行数据库迁移。
+- 回归测试：`.\.venv\Scripts\python.exe manage.py test apps.dashboard.tests.TodayProductionTests apps.l2l.tests --noinput`。
+
+# L2L 产量记录写入
+
+`common.l2l_api.record_pitch_details` 调用 `/api/1.0/pitchdetails/record_details/`，这是写入产量记录的接口，不是查询实时产量的接口。默认使用 POST，也可显式传入 `method="GET"`，但 GET 同样会修改 L2L 数据。仅在 Django 服务端调用，认证信息从现有 `L2L_BASE_URL`、`L2L_AUTH`、`L2L_SITE_ACX`、`L2L_SITE_CNX` 配置读取，不要在浏览器脚本中放置密钥。
+
+```python
+from common.l2l_api import record_pitch_details
+
+result = record_pitch_details(
+	start="2026-11-06 08:30:00",
+	end="2026-11-06 09:00:00",
+	linecode="LOOM001",
+	productcode="SKU001",
+	actual="1453.74",
+	scrap="2.00",
+	operator_count="1.00",
+	site="ACX",
+	timeout=30,
+)
+```
+
+- 上述代码会产生真实写入，示例中的产线、产品和数值必须替换为已确认的业务数据。导入模块不会提交记录，只有调用函数时才发送请求。
+- `start`、`end` 接受本地时间 `YYYY-MM-DD HH:MM:SS` 或带微秒的 `YYYY-MM-DD HH:MM:SS.ffffff`，结束必须晚于开始。写入使用真实记录时间，不套用日报的午夜日期标签转换。
+- `linecode` 与 `line_externalid` 至少提供一个；`productcode` 必填，除非显式使用布尔值 `product_autodetect=True`。
+- `actual`、`scrap`、`operator_count` 可传数字或十进制字符串，最多两位小数；省略时不发送该字段，由 L2L 使用文档中的默认值。建议用字符串保留十进制精度。
+- 可选参数还有 `unit_of_measure_code`、`comment`、`continue_current_build_sequence`。布尔参数必须传 Python 的 `True` 或 `False`，不要传字符串。默认站点为 ACX，CNX 使用 `site="CNX"`。
+- 返回完整 JSON 字典，要求 L2L 响应的 `success` 为 `true`；不将 `data` 限制为列表。本封装不请求 XML 格式。
+- 参数错误抛出 `ValueError`；缺少配置、传输失败、非法 JSON 或接口报告失败抛出 `L2LAPIError`，错误信息不会包含认证密钥。
+- 不自动重试、不缓存、不查询数据库。发生超时或错误时，不能据此确定服务端未写入；先核对 L2L 记录再决定是否重发，避免重复产量或重复追加评论。
+- 定向测试：`.\.venv\Scripts\python.exe manage.py test apps.l2l.tests --noinput`。测试使用模拟 HTTP 响应，不向真实站点写入。
+
 # 运营总览自动刷新与缓存
 
 - 运营总览每 30 秒自动整页刷新，重新加载 ACX、CNX 的今日产量和今日停机；仅在该页面生效。两张卡片共用每站点的一次日产请求和缓存，分别累加当前 08:30 生产日内的 `actual`、`downtime_minutes`，停机单位为分钟；不增加 L2L 调用次数。

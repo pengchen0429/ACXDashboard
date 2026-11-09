@@ -7,7 +7,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from django.test import SimpleTestCase, override_settings
 
-from common.l2l_api import L2LAPIError, get_daily_production, get_weekly_production
+from common.l2l_api import L2LAPIError, get_daily_production, get_weekly_production, record_pitch_details
 
 
 @override_settings(
@@ -191,3 +191,95 @@ class DailyProductionTests(SimpleTestCase):
 		with self.assertRaises(L2LAPIError) as caught:
 			get_daily_production("2026-11-02 08:30", "2026-11-03 08:30", "LOOM001")
 		self.assertNotIn("test-secret", str(caught.exception))
+
+
+@override_settings(
+	L2L_BASE_URL="https://example.test/api/1.0/",
+	L2L_AUTH="test-secret", L2L_SITE_ACX="acx-site", L2L_SITE_CNX="cnx-site",
+)
+class PitchDetailsTests(SimpleTestCase):
+	def record(self, **kwargs):
+		params = {
+			"start": "2026-11-06 08:30:00", "end": "2026-11-06 09:00:00",
+			"linecode": "LOOM001", "productcode": "SKU001",
+		}
+		return record_pitch_details(**{**params, **kwargs})
+
+	@patch("common.l2l_api.urlopen")
+	def test_post_parameters_and_complete_response(self, mock_open):
+		payload = {"success": True, "data": {"id": 42}, "message": "recorded"}
+		mock_open.return_value = io.BytesIO(json.dumps(payload).encode("utf-8"))
+		self.assertEqual(self.record(
+			start="2026-11-06 08:30:00.123456", actual="1453.74", scrap=0,
+			operator_count="2.50", unit_of_measure_code="M", comment="Shift A & B",
+			continue_current_build_sequence=True, site="CNX", timeout=10,
+		), payload)
+		request = mock_open.call_args.args[0]
+		self.assertEqual(request.get_method(), "POST")
+		self.assertEqual(urlsplit(request.full_url).path, "/api/1.0/pitchdetails/record_details/")
+		self.assertEqual(parse_qs(urlsplit(request.full_url).query), {"auth": ["test-secret"]})
+		self.assertEqual(parse_qs(request.data.decode("utf-8")), {
+			"site": ["cnx-site"], "linecode": ["LOOM001"], "productcode": ["SKU001"],
+			"start": ["2026-11-06 08:30:00.123456"], "end": ["2026-11-06 09:00:00"],
+			"actual": ["1453.74"], "scrap": ["0.00"], "operator_count": ["2.50"],
+			"unit_of_measure_code": ["M"], "comment": ["Shift A & B"],
+			"product_autodetect": ["false"], "continue_current_build_sequence": ["true"],
+		})
+		self.assertEqual(mock_open.call_args.kwargs, {"timeout": 10})
+
+	@patch("common.l2l_api.urlopen")
+	def test_get_external_id_and_autodetect(self, mock_open):
+		mock_open.return_value = io.BytesIO(b'{"success": true, "data": {}}')
+		self.record(linecode=None, line_externalid="ext-1", productcode=None, product_autodetect=True, method="get")
+		params = parse_qs(urlsplit(mock_open.call_args.args[0]).query)
+		self.assertEqual(params["site"], ["acx-site"])
+		self.assertEqual(params["line_externalid"], ["ext-1"])
+		self.assertEqual(params["product_autodetect"], ["true"])
+		for name in ("linecode", "productcode", "actual", "scrap", "operator_count"):
+			self.assertNotIn(name, params)
+
+	@patch("common.l2l_api.urlopen")
+	def test_invalid_inputs_never_send_request(self, mock_open):
+		for params in [
+			{"start": "2026-11-06 08:30"}, {"start": None},
+			{"end": "2026-11-06 08:30:00"}, {"end": "2026-11-06 08:00:00"},
+			{"linecode": None}, {"linecode": " "}, {"line_externalid": 123},
+			{"productcode": None}, {"productcode": ""}, {"product_autodetect": "false"},
+			{"continue_current_build_sequence": "true"}, {"unit_of_measure_code": ""},
+			{"actual": "1.234"}, {"scrap": "NaN"}, {"operator_count": "Infinity"},
+			{"actual": True}, {"comment": 123}, {"method": "DELETE"}, {"site": "other"},
+		]:
+			with self.subTest(params=params):
+				with self.assertRaises(ValueError):
+					self.record(**params)
+		mock_open.assert_not_called()
+
+	@patch("common.l2l_api.urlopen")
+	def test_transport_errors_are_not_retried_or_exposed(self, mock_open):
+		for error in [
+			HTTPError("https://example.test/?auth=test-secret", 403, "test-secret", {}, None),
+			URLError("test-secret"), TimeoutError("test-secret"),
+		]:
+			with self.subTest(error=type(error).__name__):
+				mock_open.reset_mock()
+				mock_open.side_effect = error
+				with self.assertRaises(L2LAPIError) as caught:
+					self.record()
+				self.assertNotIn("test-secret", str(caught.exception))
+				mock_open.assert_called_once()
+
+	@patch("common.l2l_api.urlopen")
+	def test_invalid_responses(self, mock_open):
+		for body in (b"not json", b"[]", b'{"success": false, "error": "test-secret"}'):
+			with self.subTest(body=body):
+				mock_open.return_value = io.BytesIO(body)
+				with self.assertRaises(L2LAPIError) as caught:
+					self.record()
+				self.assertNotIn("test-secret", str(caught.exception))
+
+	@override_settings(L2L_SITE_CNX="")
+	@patch("common.l2l_api.urlopen")
+	def test_missing_site_configuration(self, mock_open):
+		with self.assertRaises(L2LAPIError):
+			self.record(site="CNX")
+		mock_open.assert_not_called()

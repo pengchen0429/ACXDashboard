@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}产线产量 - CNSX数据看板{% endblock %}
+{% block body_class %}production-detail-page{% endblock %}
+{% block head_extra %}
+<link rel="stylesheet" href="{% static 'css/production_detail.css' %}?v=1">
+{% endblock %}
+
+{% block content %}
+<div class="production-detail" id="productionDetail" data-url="{% url 'dashboard-today-production' %}">
+	<header class="production-header">
+		<div class="production-title">
+			<a class="production-icon" href="{% url 'dashboard' %}" title="返回运营总览" aria-label="返回运营总览">&#8592;</a>
+			<h1>产线产量</h1>
+		</div>
+		<div class="production-update">
+			<span id="productionUpdated"></span>
+			<button class="production-icon" id="productionRefresh" type="button" title="刷新数据" aria-label="刷新数据">&#8635;</button>
+		</div>
+	</header>
+	<form class="production-filters" id="productionFilters">
+		<label>工厂<select id="productionSite" name="site"><option value="ACX">ACX</option><option value="CNX">CNX</option></select></label>
+		<label>区域<select id="productionArea" name="area"><option value="">全部区域</option>{% for area in production_areas %}<option value="{{ area }}">{{ area }}</option>{% endfor %}</select></label>
+		<label class="production-search">产线<input id="productionSearch" type="search" placeholder="搜索产线" autocomplete="off"></label>
+	</form>
+	<div class="production-summary">
+		<span id="productionCount">-- 条产线</span>
+		<span id="productionPeriod"></span>
+		<span class="production-legend"><i class="demand-color"></i>Demand<i class="actual-color"></i>Actual</span>
+	</div>
+	<div class="production-status" id="productionStatus" role="status" aria-live="polite">加载中</div>
+	<div class="production-lines" id="productionLines" aria-busy="true"></div>
+	<div class="production-empty" id="productionEmpty" hidden>当前筛选下暂无产线数据</div>
+</div>
+<template id="productionLineTemplate">
+	<article class="production-line-card">
+		<header><h2 data-line-name></h2><span data-line-area></span></header>
+		<div class="line-product"><span>生产产品</span><strong data-line-product>--</strong></div>
+		<div class="line-chart" role="img">
+			<div class="line-bar-row"><span>Demand</span><div class="line-bar-track"><div class="line-bar-fill demand-color" data-demand-bar></div></div><strong data-demand-value></strong></div>
+			<div class="line-bar-row"><span>Actual</span><div class="line-bar-track"><div class="line-bar-fill actual-color" data-actual-bar></div></div><strong data-actual-value></strong></div>
+		</div>
+		<footer><span data-line-achievement></span><span data-line-unit>米</span></footer>
+	</article>
+</template>
+{% endblock %}
+{% block extra_js %}<script src="{% static 'js/production_detail.js' %}?v=1"></script>{% endblock %}

@@ -1,8 +1,9 @@
 import json
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 from django.conf import settings
 from django.utils import timezone
@@ -75,8 +76,82 @@ def get_daily_production(
 	return _get_production_summary("daily_summary_data_by_line", params, timeout, site=site)
 
 
+def record_pitch_details(
+	start, end, linecode=None, *, line_externalid=None, productcode=None,
+	product_autodetect=False, actual=None, scrap=None, operator_count=None,
+	unit_of_measure_code=None, comment=None, continue_current_build_sequence=False,
+	site=None, timeout=30, method="POST",
+):
+	"""Write production pitch details and return the complete JSON response.
+
+	Times are local strings in YYYY-MM-DD HH:MM:SS[.ffffff] format.
+	Provide a linecode or line_externalid, and a productcode unless autodetect
+	is enabled. Site selects ACX/CNX and defaults to configured ACX.
+	This mutates L2L, even with GET. Requests are never automatically retried:
+	an error or timeout does not prove the record was not created.
+	"""
+	if not isinstance(method, str) or method.upper() not in ("GET", "POST"):
+		raise ValueError("method must be GET or POST")
+	params = {}
+	parsed_times = []
+	for name, value in (("start", start), ("end", end)):
+		for date_format in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+			try:
+				parsed = datetime.strptime(value, date_format)
+			except (TypeError, ValueError):
+				continue
+			params[name] = parsed.strftime(date_format)
+			parsed_times.append(parsed)
+			break
+		else:
+			raise ValueError("%s must use YYYY-MM-DD HH:MM:SS[.ffffff] format" % name)
+	if parsed_times[0] >= parsed_times[1]:
+		raise ValueError("start must be earlier than end")
+	for name, value in (
+		("linecode", linecode), ("line_externalid", line_externalid),
+		("productcode", productcode), ("unit_of_measure_code", unit_of_measure_code),
+	):
+		if value is not None:
+			if not isinstance(value, str) or not value.strip():
+				raise ValueError("%s must be a non-empty string" % name)
+			params[name] = value.strip()
+	if linecode is None and line_externalid is None:
+		raise ValueError("linecode or line_externalid is required")
+	for name, value in (
+		("product_autodetect", product_autodetect),
+		("continue_current_build_sequence", continue_current_build_sequence),
+	):
+		if not isinstance(value, bool):
+			raise ValueError("%s must be a boolean" % name)
+		params[name] = str(value).lower()
+	if productcode is None and not product_autodetect:
+		raise ValueError("productcode is required unless product_autodetect is True")
+	for name, value in (("actual", actual), ("scrap", scrap), ("operator_count", operator_count)):
+		if value is not None:
+			try:
+				number = Decimal(str(value))
+				if not number.is_finite() or number != number.quantize(Decimal("0.01")):
+					raise ValueError
+			except (InvalidOperation, ValueError):
+				raise ValueError("%s must be a finite decimal with at most two decimal places" % name) from None
+			params[name] = format(number, ".2f")
+	if comment is not None:
+		if not isinstance(comment, str):
+			raise ValueError("comment must be a string")
+		params["comment"] = comment
+	return _request_l2l("pitchdetails/record_details", params, timeout, site=site, method=method.upper())
+
+
 # 读取认证和站点配置，发送生产汇总请求，校验响应并统一处理接口异常。
 def _get_production_summary(endpoint, params, timeout, *, site=None):
+	payload = _request_l2l("reporting/production/" + endpoint, params, timeout, site=site)
+	rows = payload.get("data")
+	if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+		raise L2LAPIError("L2L returned an unexpected data format")
+	return rows
+
+
+def _request_l2l(endpoint, params, timeout, *, site=None, method="GET"):
 	base_url = getattr(settings, "L2L_BASE_URL", None)
 	auth = getattr(settings, "L2L_AUTH", None)
 	if site is None:
@@ -88,14 +163,18 @@ def _get_production_summary(endpoint, params, timeout, *, site=None):
 	if not all((base_url, auth, site)):
 		raise L2LAPIError("L2L base URL, authentication and requested site must be configured")
 
-	params = {**params, "auth": auth, "site": site}
-	url = (
-		base_url.rstrip("/")
-		+ "/reporting/production/" + endpoint + "/?"
-		+ urlencode(params)
-	)
+	params = {**params, "site": site}
+	url = base_url.rstrip("/") + "/" + endpoint + "/?"
+	if method == "POST":
+		request = Request(
+			url + urlencode({"auth": auth}), data=urlencode(params).encode("utf-8"),
+			headers={"Content-Type": "application/x-www-form-urlencoded; charset=utf-8"},
+			method="POST",
+		)
+	else:
+		request = url + urlencode({**params, "auth": auth})
 	try:
-		with urlopen(url, timeout=timeout) as response:
+		with urlopen(request, timeout=timeout) as response:
 			payload = json.load(response)
 	except HTTPError as error:
 		raise L2LAPIError("L2L request failed (HTTP %s)" % error.code) from None
@@ -106,7 +185,4 @@ def _get_production_summary(endpoint, params, timeout, *, site=None):
 
 	if not isinstance(payload, dict) or payload.get("success") is not True:
 		raise L2LAPIError("L2L reported an unsuccessful response")
-	rows = payload.get("data")
-	if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
-		raise L2LAPIError("L2L returned an unexpected data format")
-	return rows
+	return payload

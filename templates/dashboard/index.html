@@ -20,7 +20,7 @@
 
   <!-- dashboard-kpi -->
   <div class="card-grid cols-4">
-    <div class="kpi-card daily-metric-card" id="todayProduction" data-url="{% url 'dashboard-today-production' %}" aria-busy="true">
+    <a class="kpi-card daily-metric-card" id="todayProduction" href="{% url 'dashboard-production' %}" data-url="{% url 'dashboard-today-production' %}" aria-label="今日产量，查看各产线详情" aria-busy="true" style="text-decoration:none;color:inherit">
       <div class="kpi-label"><span>今日产量</span><span class="metric-code">数据源 - L2L</span></div>
       <div class="production-values">
         <div class="production-reading" data-production-site="ACX" aria-busy="true">
@@ -35,7 +35,7 @@
         </div>
       </div>
       <div class="kpi-sub daily-metric-period" id="todayProductionStatus" role="status">加载中</div>
-    </div>
+    </a>
     <div class="kpi-card daily-metric-card" id="todayDowntime" aria-busy="true">
       <div class="kpi-label"><span>今日停机</span><span class="metric-code">数据源 - L2L</span></div>
       <div class="production-values">
@@ -112,5 +112,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/dashboard.js' %}?v=equipment-status-1"></script>
+<script src="{% static 'js/dashboard.js' %}?v=smooth-refresh-1"></script>
 {% endblock %}

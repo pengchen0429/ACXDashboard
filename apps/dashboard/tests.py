@@ -234,6 +234,63 @@ class TodayProductionTests(SimpleTestCase):
 
 	@patch('apps.dashboard.views.get_daily_production')
 	@patch('apps.dashboard.views.timezone.localtime')
+	def test_line_details_sum_by_original_line_and_keep_exact_decimals(self, mock_now, mock_daily):
+		from django.utils import timezone
+		mock_now.return_value = timezone.make_aware(datetime(2026, 11, 3, 13, 0))
+		mock_daily.return_value = [
+			{'start_date': stamp, 'line': line, 'line_id': line_id, 'area': 'Weaving Process',
+			 'actual': actual, 'demand': demand, 'downtime_minutes': '0', 'products': 1}
+			for stamp, line, line_id, actual, demand in [
+				('2026-11-03T00:00:00', 'LOOM042A', 1, '0.1', '0.2'),
+				('2026-11-03T00:00:00', 'LOOM042A', 1, '0.2', '0.3'),
+				('2026-11-03T00:00:00', 'LOOM042B', 2, '0', '10'),
+				('2026-11-02T00:00:00', 'LOOM042A', 1, '999', '999'),
+			]
+		]
+		for site in ('ACX', 'CNX'):
+			payload = self.client.get(reverse('dashboard-today-production'), {'site': site, 'include_lines': '1'}).json()
+			self.assertEqual(payload['actual'], '0.3')
+			self.assertEqual(payload['lines'], [
+				{'line_id': 1, 'line': 'LOOM042A', 'area': 'Weaving Process', 'product': None, 'demand': '0.5', 'actual': '0.3'},
+				{'line_id': 2, 'line': 'LOOM042B', 'area': 'Weaving Process', 'product': None, 'demand': '10', 'actual': '0'},
+			])
+			self.assertEqual(payload['areas'], ['Weaving Process', 'Dyeing Process', 'Finishing Process'])
+			self.assertNotIn('lines', self.client.get(reverse('dashboard-today-production'), {'site': site}).json())
+		self.assertEqual(mock_daily.call_count, 4)
+
+	@patch('apps.dashboard.views.get_daily_production')
+	@patch('apps.dashboard.views.timezone.localtime')
+	def test_invalid_line_demand_is_unavailable_not_zero(self, mock_now, mock_daily):
+		from django.utils import timezone
+		mock_now.return_value = timezone.make_aware(datetime(2026, 11, 3, 13, 0))
+		for demand in ('NaN', None, '-1'):
+			with self.subTest(demand=demand):
+				self.cache.clear()
+				mock_daily.return_value = [{
+					'start_date': '2026-11-03T00:00:00',
+					'line': 'LOOM001', 'actual': '1', 'demand': demand, 'downtime_minutes': '0',
+				}]
+				self.assertEqual(self.client.get(reverse('dashboard-today-production'), {'include_lines': '1'}).status_code, 503)
+
+	@patch('django.contrib.auth.models.AnonymousUser.has_perm', return_value=False)
+	def test_production_page_inherits_base_and_overview_links_to_it(self, mock_permission):
+		response = self.client.get(reverse('dashboard-production'))
+		self.assertEqual(response.status_code, 200)
+		self.assertTemplateUsed(response, 'dashboard/production_detail.html')
+		self.assertTemplateUsed(response, 'base.html')
+		self.assertContains(response, 'id="productionSite"')
+		self.assertContains(response, 'id="productionArea"')
+		self.assertEqual(response.context['production_areas'], ('Weaving Process', 'Dyeing Process', 'Finishing Process'))
+		self.assertContains(self.client.get(reverse('dashboard')), 'href="%s"' % reverse('dashboard-production'))
+
+	@patch('apps.dashboard.views.get_daily_production', return_value=[])
+	def test_empty_line_data_is_a_successful_empty_list(self, mock_daily):
+		response = self.client.get(reverse('dashboard-today-production'), {'include_lines': '1'})
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.json()['lines'], [])
+
+	@patch('apps.dashboard.views.get_daily_production')
+	@patch('apps.dashboard.views.timezone.localtime')
 	def test_groups_all_lines_by_exact_area_and_site(self, mock_now, mock_daily):
 		from django.utils import timezone
 		mock_now.return_value = timezone.make_aware(datetime(2026, 11, 3, 13, 0))

@@ -1,8 +1,4 @@
 (function() {
-	window.setTimeout(function() { window.location.reload(); }, 30000);
-})();
-
-(function() {
 	var card = document.getElementById('todayProduction');
 	if (!card) return;
 	var metrics = [
@@ -10,7 +6,8 @@
 		{ card: document.getElementById('todayDowntime'), field: 'downtime_minutes', loaded: false }
 	].filter(function(metric) { return metric.card; });
 	var readings = card.querySelectorAll('[data-production-site]');
-	var pending = readings.length;
+	var snapshots = {};
+	var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 	function renderMetric(metric, site, data) {
 		var reading = metric.card.querySelector('[data-production-site="' + site + '"]');
@@ -18,7 +15,13 @@
 		var siteStatus = reading.querySelector('.production-site-status');
 		var total = data && data[metric.field] != null ? Number(data[metric.field]) : NaN;
 		if (Number.isFinite(total)) {
-			value.textContent = total.toLocaleString('zh-CN', { maximumFractionDigits: 20 });
+			var nextValue = total.toLocaleString('zh-CN', { maximumFractionDigits: 20 });
+			var changed = value.textContent !== nextValue;
+			var previouslyLoaded = value.textContent !== '--';
+			if (changed) value.textContent = nextValue;
+			if (changed && previouslyLoaded && !reducedMotion.matches && value.animate) {
+				value.animate([{ opacity: 0.65 }, { opacity: 1 }], { duration: 240, easing: 'ease-out' });
+			}
 			siteStatus.textContent = data.stale ? '数据暂未更新' : '';
 			if (data.updated_at) reading.title = '数据更新时间：' + new Date(data.updated_at).toLocaleString('zh-CN');
 			metric.loaded = true;
@@ -29,36 +32,47 @@
 		}
 	}
 
-	readings.forEach(function(reading) {
+	function refreshSite(reading) {
 		var site = reading.dataset.productionSite;
-		fetch(card.dataset.url + '?site=' + encodeURIComponent(site) + '&include_trend=1', { cache: 'no-store' })
+		var controller = new AbortController();
+		var timeout = window.setTimeout(function() { controller.abort(); }, 20000);
+		return fetch(card.dataset.url + '?site=' + encodeURIComponent(site) + '&include_trend=1', { cache: 'no-store', signal: controller.signal })
 			.then(function(response) {
 				if (!response.ok) throw new Error('Daily metrics request failed');
 				return response.json();
 			})
 			.then(function(data) {
+				snapshots[site] = data;
 				metrics.forEach(function(metric) { renderMetric(metric, site, data); });
 				renderAreaProduction(site, data);
 				renderProductionTrend(site, data);
 				renderEquipmentStatus(site, data);
 			})
 			.catch(function() {
-				metrics.forEach(function(metric) { renderMetric(metric, site, null); });
-				renderAreaProduction(site, null);
-				renderProductionTrend(site, null);
-				renderEquipmentStatus(site, null);
+				var data = snapshots[site] ? Object.assign({}, snapshots[site], { stale: true }) : null;
+				metrics.forEach(function(metric) { renderMetric(metric, site, data); });
+				renderAreaProduction(site, data);
+				renderProductionTrend(site, data);
+				renderEquipmentStatus(site, data);
 			})
 			.finally(function() {
-				pending -= 1;
+				window.clearTimeout(timeout);
 				metrics.forEach(function(metric) {
 					metric.card.querySelector('[data-production-site="' + site + '"]').setAttribute('aria-busy', 'false');
-					if (!pending) {
-						metric.card.setAttribute('aria-busy', 'false');
-						if (!metric.loaded) metric.card.querySelector('.daily-metric-period').textContent = '暂不可用';
-					}
 				});
 			});
-	});
+	}
+
+	function refresh() {
+		Promise.all(Array.from(readings, refreshSite)).finally(function() {
+			metrics.forEach(function(metric) {
+				metric.card.setAttribute('aria-busy', 'false');
+				if (!metric.loaded) metric.card.querySelector('.daily-metric-period').textContent = '暂不可用';
+			});
+			window.setTimeout(refresh, 30000);
+		});
+	}
+	refresh();
 })();
 
 /* SECTION: clock */
@@ -91,7 +105,9 @@ var trendDates = (function() {
 echarts.registerTheme('acxCockpit', {
 	color: ['#50d9e8', '#54dfad', '#efbd68', '#99bafa', '#f27b83'],
 	textStyle: { fontFamily: 'Bahnschrift, Microsoft YaHei, sans-serif' },
-	animationDuration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 700
+	animationDuration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 450,
+	animationDurationUpdate: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 450,
+	animationEasingUpdate: 'cubicOut'
 });
 
 /* SECTION: chart-dashboard-trend */
