@@ -1,0 +1,137 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Dispatch 分析看板 - CNSX数据看板{% endblock %}
+{% block body_class %}dispatch-page{% endblock %}
+{% block main_class %}main-content dispatch-content{% endblock %}
+{% block head_extra %}
+<link rel="stylesheet" href="{% static 'css/dispatch.css' %}?v=excel-export-1">
+<script src="{% static 'js/echarts.min.js' %}"></script>
+{% endblock %}
+
+{% block content %}
+
+<!-- SECTION: header -->
+<div class="header">
+  <h1>📡 Dispatch 分析看板</h1>
+  <div class="clock" id="clock"></div>
+</div>
+
+<div class="main" id="dispatchMain" data-url="{% url 'dispatch-data' %}" data-options-url="{% url 'dispatch-options' %}" data-export-url="{% url 'dispatch-export' %}">
+  {% csrf_token %}
+  <!-- SECTION: filter-bar -->
+  <div class="filter-bar">
+    <div class="filter-row">
+      <div class="filter-group">
+        <div class="filter-label">站点</div>
+        <div class="multi-select" data-name="Site">
+          <button type="button" class="multi-select-trigger" aria-expanded="false">选择站点</button>
+          <div class="multi-select-dropdown">
+            <input class="multi-select-search" placeholder="搜索站点...">
+            <div class="options-list"></div>
+            <div class="multi-select-actions">
+              <span class="multi-select-count" aria-live="polite">已选 1 项</span>
+              <button type="button" class="btn btn-secondary multi-select-reset">重置</button>
+              <button type="button" class="btn btn-primary multi-select-confirm">确定</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="filter-group filter-group-date">
+        <div class="filter-label">时间范围</div>
+        <div class="date-range">
+          <input type="date" class="date-input" id="dateFrom" aria-label="报告开始日期" value="{{ date_from }}">
+          <span style="color:var(--text-muted);font-size:12px;">至</span>
+          <input type="date" class="date-input" id="dateTo" aria-label="报告结束日期" value="{{ date_to }}">
+        </div>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">区域</div>
+        <div class="multi-select" data-name="Area">
+          <button type="button" class="multi-select-trigger" aria-expanded="false">选择区域</button>
+          <div class="multi-select-dropdown">
+            <input class="multi-select-search" placeholder="搜索区域...">
+            <div class="options-list"></div>
+            <div class="multi-select-actions">
+              <span class="multi-select-count" aria-live="polite">已选 0 项</span>
+              <button type="button" class="btn btn-secondary multi-select-reset">重置</button>
+              <button type="button" class="btn btn-primary multi-select-confirm">确定</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">提交人</div>
+        <div class="multi-select" data-name="Submitter">
+          <button type="button" class="multi-select-trigger" aria-expanded="false">选择提交人</button>
+          <div class="multi-select-dropdown">
+            <input class="multi-select-search" placeholder="搜索提交人...">
+            <div class="options-list"></div>
+            <div class="multi-select-actions">
+              <span class="multi-select-count" aria-live="polite">已选 0 项</span>
+              <button type="button" class="btn btn-secondary multi-select-reset">重置</button>
+              <button type="button" class="btn btn-primary multi-select-confirm">确定</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Dispatch 类型</div>
+        <div class="multi-select" data-name="Type">
+          <button type="button" class="multi-select-trigger" aria-expanded="false">选择类型</button>
+          <div class="multi-select-dropdown">
+            <input class="multi-select-search" placeholder="搜索类型...">
+            <div class="options-list"></div>
+            <div class="multi-select-actions">
+              <span class="multi-select-count" aria-live="polite">已选 0 项</span>
+              <button type="button" class="btn btn-secondary multi-select-reset">重置</button>
+              <button type="button" class="btn btn-primary multi-select-confirm">确定</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="btn-group">
+        <button type="button" class="btn btn-primary" id="btnQuery" data-primary-action>🔍 查询</button>
+        <button type="button" class="btn btn-secondary" id="btnReset">↺ 重置</button>
+        <button type="button" class="btn btn-secondary" id="btnExport" title="按最近一次查询条件导出逐条 Dispatch 明细为 Excel" disabled>&#8681; 导出</button>
+      </div>
+    </div>
+    <div class="query-status" id="queryStatus" role="status" aria-live="polite"></div>
+  </div>
+
+  <!-- SECTION: stats -->
+  <div class="stats-row">
+    <div class="stat-card"><div class="stat-label">Dispatch 总数</div><div class="stat-value" id="stTotal">0</div><div class="stat-sub">筛选范围内</div></div>
+    <div class="stat-card"><div class="stat-label">OPEN</div><div class="stat-value" id="stOpen">0</div><div class="stat-sub">待处理</div></div>
+    <div class="stat-card"><div class="stat-label">IN WORK</div><div class="stat-value" id="stInwork">0</div><div class="stat-sub">处理中</div></div>
+    <div class="stat-card"><div class="stat-label">CLOSED</div><div class="stat-value" id="stClosed">0</div><div class="stat-sub">已关闭</div></div>
+    <div class="stat-card"><div class="stat-label">关闭率</div><div class="stat-value" id="stRate">0%</div><div class="stat-sub">目标 ≥ 90%</div></div>
+  </div>
+
+  <!-- SECTION: charts -->
+  <div class="charts-grid">
+    <div class="chart-card wide">
+      <div class="chart-card-title">Dispatch 提交趋势（按月）</div>
+      <div class="chart-box" id="chartTrend" data-chart="true"></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-card-title">状态分布</div>
+      <div class="chart-box" id="chartStatus" data-chart="true"></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-card-title">类型分布</div>
+      <div class="chart-box" id="chartType" data-chart="true"></div>
+    </div>
+    <div class="chart-card wide">
+      <div class="chart-card-title">各区域 Dispatch 统计（堆叠）</div>
+      <div class="chart-box" id="chartArea" data-chart="true"></div>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/dispatch.js' %}?v=excel-details-1"></script>
+{% endblock %}

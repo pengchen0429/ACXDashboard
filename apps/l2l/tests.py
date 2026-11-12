@@ -7,7 +7,100 @@ from urllib.parse import parse_qs, urlsplit
 
 from django.test import SimpleTestCase, override_settings
 
-from common.l2l_api import L2LAPIError, get_daily_production, get_weekly_production, record_pitch_details
+from common.l2l_api import (
+	L2LAPIError, get_daily_production, get_dispatch_event_data,
+	get_weekly_production, record_pitch_details,
+)
+
+
+@override_settings(
+	L2L_BASE_URL="https://example.test/api/1.0/", L2L_AUTH="test-secret",
+	L2L_SITE_ACX="acx-site", L2L_SITE_CNX="cnx-site",
+)
+class DispatchEventDataTests(SimpleTestCase):
+	@patch("common.l2l_api.urlopen")
+	def test_filters_and_complete_response(self, mock_open):
+		payload = {"success": True, "data": [{"id": 42}], "lastupdated": "2026-11-11 02:00:00"}
+		mock_open.return_value = io.BytesIO(json.dumps(payload).encode("utf-8"))
+		self.assertEqual(get_dispatch_event_data(
+			"2026-11-11 00:00:00", limit=50, areacode=" AREA1 ", line_ids="2015,2016",
+			dispatchtype_ids="1,2", externalid="event-42", externalid_prefix="event-",
+			externalid__isnull=False, open=True, deleted=0, reversed=1, site="CNX", timeout=10,
+		), payload)
+		url = urlsplit(mock_open.call_args.args[0])
+		self.assertEqual(url.path, "/api/1.0/dispatches/get_event_data/")
+		self.assertEqual(parse_qs(url.query), {
+			"auth": ["test-secret"], "site": ["cnx-site"], "limit": ["50"],
+			"lastupdated": ["2026-11-11 00:00:00"], "areacode": ["AREA1"],
+			"line_ids": ["2015,2016"], "dispatchtype_ids": ["1,2"],
+			"externalid": ["event-42"], "externalid_prefix": ["event-"],
+			"externalid__isnull": ["false"], "open": ["1"], "deleted": ["0"], "reversed": ["1"],
+		})
+		self.assertEqual(mock_open.call_args.kwargs, {"timeout": 10})
+
+	@patch("common.l2l_api.urlopen")
+	def test_single_record_without_timestamp(self, mock_open):
+		for filters in ({"dispatch_id": 42}, {"dispatch_number": "D-42"}):
+			with self.subTest(filters=filters):
+				mock_open.return_value = io.BytesIO(b'{"success": true, "data": []}')
+				get_dispatch_event_data(**filters)
+				params = parse_qs(urlsplit(mock_open.call_args.args[0]).query)
+				self.assertEqual(params, {
+					"auth": ["test-secret"], "site": ["acx-site"], "limit": ["1000"],
+					**{name: [str(value)] for name, value in filters.items()},
+				})
+
+	@patch("common.l2l_api.urlopen")
+	def test_timestamp_only_and_true_null_filter(self, mock_open):
+		mock_open.return_value = io.BytesIO(b'{"success": true, "data": []}')
+		get_dispatch_event_data("2026-11-11 00:00:00", externalid__isnull=True, open=0, reversed=False)
+		params = parse_qs(urlsplit(mock_open.call_args.args[0]).query)
+		self.assertEqual(params["externalid__isnull"], ["true"])
+		self.assertEqual(params["open"], ["0"])
+		self.assertEqual(params["reversed"], ["0"])
+		self.assertNotIn("deleted", params)
+
+	@patch("common.l2l_api.urlopen")
+	def test_invalid_parameters_do_not_send_request(self, mock_open):
+		for filters in [
+			{}, {"externalid": "event-42"}, {"lastupdated": "2026-11-11"},
+			{"lastupdated": "2026-11-11 00:00:00+00:00"}, {"lastupdated": "2026-11-11 0:0:0"},
+			{"lastupdated": 123}, {"dispatch_id": " "}, {"dispatch_number": True},
+			{"dispatch_id": 1.5}, {"dispatch_id": 42, "limit": 0},
+			{"dispatch_id": 42, "limit": 1001}, {"dispatch_id": 42, "limit": True},
+			{"dispatch_id": 42, "limit": "10"}, {"dispatch_id": 42, "line_ids": [1, 2]},
+			{"dispatch_id": 42, "dispatchtype_ids": " "}, {"dispatch_id": 42, "areacode": ""},
+			{"dispatch_id": 42, "externalid": 123}, {"dispatch_id": 42, "externalid_prefix": ""},
+			{"dispatch_id": 42, "externalid__isnull": 1}, {"dispatch_id": 42, "open": "1"},
+			{"dispatch_id": 42, "deleted": 2}, {"dispatch_id": 42, "reversed": 1.0},
+			{"dispatch_id": 42, "site": "other"},
+		]:
+			with self.subTest(filters=filters):
+				with self.assertRaises(ValueError):
+					get_dispatch_event_data(**filters)
+		mock_open.assert_not_called()
+
+	@override_settings(L2L_SITE_CNX="")
+	@patch("common.l2l_api.urlopen")
+	def test_missing_site_configuration(self, mock_open):
+		with self.assertRaises(L2LAPIError):
+			get_dispatch_event_data(dispatch_id=42, site="CNX")
+		mock_open.assert_not_called()
+
+	@patch("common.l2l_api.urlopen")
+	def test_response_and_transport_errors(self, mock_open):
+		for response in (b'not json', b'[]', b'{"success": false, "error": "test-secret"}'):
+			with self.subTest(response=response):
+				mock_open.return_value = io.BytesIO(response)
+				with self.assertRaises(L2LAPIError) as caught:
+					get_dispatch_event_data(dispatch_id=42)
+				self.assertNotIn("test-secret", str(caught.exception))
+		mock_open.reset_mock()
+		mock_open.side_effect = URLError("test-secret")
+		with self.assertRaises(L2LAPIError) as caught:
+			get_dispatch_event_data(dispatch_id=42)
+		self.assertNotIn("test-secret", str(caught.exception))
+		mock_open.assert_called_once()
 
 
 @override_settings(

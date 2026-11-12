@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     'apps.organization',
     'apps.l2l',
     'apps.copdata',
+    'apps.dispatch',
 ]
 
 MIDDLEWARE = [
@@ -207,6 +208,11 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 CACHES = {
     'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'},
+    'dispatch': {
+        'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+        'LOCATION': BASE_DIR / '.cache' / 'dispatch',
+        'TIMEOUT': 60,
+    },
     'dashboard': {
         'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
         'LOCATION': BASE_DIR / '.cache' / 'dashboard',
