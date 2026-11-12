@@ -2,7 +2,9 @@ from collections import Counter
 
 from django.conf import settings
 
-from common.snowflake import ACTIVE_DISPATCH_AREA_FILTER_SQL, fetch_all, get_active_areas
+from common.snowflake import (
+	ACTIVE_DISPATCH_AREA_FILTER_SQL, ACTIVE_DISPATCH_TYPE_FILTER_SQL, fetch_all, get_active_areas,
+)
 
 
 def get_dispatch_filter_options():
@@ -20,6 +22,7 @@ WITH filter_values AS (
 	WHERE "SERVER_SITE_NAME" IN (%s, %s)
 		AND COALESCE(LOWER(TRIM("deleted")), '') NOT IN ('t', 'true', '1')
 		AND {ACTIVE_DISPATCH_AREA_FILTER_SQL}
+		AND {ACTIVE_DISPATCH_TYPE_FILTER_SQL}
 )
 SELECT DISTINCT site AS "site", 'areas' AS "dimension", area AS "value"
 FROM filter_values WHERE NULLIF(area, '') IS NOT NULL
@@ -64,6 +67,7 @@ WITH dispatches AS (
 	WHERE "SERVER_SITE_NAME" IN ({site_placeholders})
 		AND COALESCE(LOWER(TRIM("deleted")), '') NOT IN ('t', 'true', '1')
 		AND {ACTIVE_DISPATCH_AREA_FILTER_SQL}
+		AND {ACTIVE_DISPATCH_TYPE_FILTER_SQL}
 )
 SELECT TO_CHAR(reported_at, 'YYYY-MM') AS "month", area AS "area",
 	submitter AS "submitter", dispatch_type AS "type", status AS "status", COUNT(*) AS "count"
@@ -99,6 +103,7 @@ WITH dispatch_details AS (
 	WHERE "SERVER_SITE_NAME" IN ({site_placeholders})
 		AND COALESCE(LOWER(TRIM("deleted")), '') NOT IN ('t', 'true', '1')
 		AND {ACTIVE_DISPATCH_AREA_FILTER_SQL}
+		AND {ACTIVE_DISPATCH_TYPE_FILTER_SQL}
 )
 SELECT factory AS "factory", reported_at AS "reported", area AS "area", dispatch_type AS "type"
 FROM dispatch_details

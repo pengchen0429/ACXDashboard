@@ -159,7 +159,7 @@ ORDER BY RecordDate
 	for name in dimensions:
 		items = sorted(counts[name].items(), key=lambda item: (-item[1], item[0]))
 		if name in ('defects', 'devices', 'inspectors', 'products'):
-			items = items[:10]
+			items = items[:5]
 		result[name] = [{'name': label, 'value': count} for label, count in items]
 	result['category_trend'] = [
 		{'name': item['name'], 'data': [category_daily[item['name']][day] for day in dates]}

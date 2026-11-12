@@ -20,6 +20,14 @@ ACTIVE_DISPATCH_AREA_FILTER_SQL = f'''EXISTS (
 		AND {ACTIVE_AREA_CONDITIONS_SQL}
 )'''
 
+ACTIVE_DISPATCH_TYPE_FILTER_SQL = '''EXISTS (
+	SELECT 1 FROM PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHTYPES
+	WHERE "SERVER_SITE_NAME" = dispatch_source."SERVER_SITE_NAME"
+		AND TRIM("code") = TRIM(dispatch_source."dispatchtypecode")
+		AND LOWER(TRIM("active")) = 'true'
+		AND NULLIF(TRIM("code"), '') IS NOT NULL
+)'''
+
 
 def _validate_select(sql):
 	"""校验查询为单条 SELECT，允许 WITH 查询；实际只读权限由数据库角色保证。"""

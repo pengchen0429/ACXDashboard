@@ -164,7 +164,7 @@ class DashboardStatisticsTests(SimpleTestCase):
 			self.assertEqual(sum(item['value'] for item in result[dimension]), Decimal('13.75'))
 
 	@patch('apps.analytics.views.connections')
-	def test_top_ten_and_deterministic_ties(self, connections):
+	def test_top_five_and_deterministic_ties(self, connections):
 		cursor = connections.__getitem__.return_value.cursor.return_value.__enter__.return_value
 		cursor.fetchall.return_value = [
 			(date(2026, 10, 15), 'Category', 'Item%02d' % index, 'Team', 'Item%02d' % index, 'Item%02d' % index, 'Code', 'Class', 'Item%02d' % index, Decimal('1'))
@@ -172,8 +172,9 @@ class DashboardStatisticsTests(SimpleTestCase):
 		]
 		result = fetch_dashboard_statistics(date(2026, 10, 15), date(2026, 10, 15))
 		for dimension in ('defects', 'devices', 'inspectors', 'products'):
-			self.assertEqual(len(result[dimension]), 10)
-			self.assertEqual(result[dimension][0]['name'], 'Item00')
+			self.assertEqual([item['name'] for item in result[dimension]], [
+				'Item00', 'Item01', 'Item02', 'Item03', 'Item04',
+			])
 		self.assertEqual(result['total'], 12)
 
 	@patch('apps.analytics.views.connections')

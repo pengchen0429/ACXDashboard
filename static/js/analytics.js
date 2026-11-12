@@ -68,15 +68,32 @@
 		var data = horizontal ? items.slice().reverse() : items;
 		var category = axis('category', data.map(function(item) {return item.name;}));
 		category.axisLabel.width = horizontal ? 100 : 65;
-		category.axisLabel.overflow = 'truncate';
+		category.axisLabel.overflow = horizontal ? 'breakAll' : 'truncate';
+		if (horizontal) {
+			category.axisLabel.interval = 0;
+			category.axisLabel.lineHeight = 14;
+		}
 		if (!horizontal) category.axisLabel.rotate = 30;
 		return {
 			tooltip: {trigger: 'axis', axisPointer: {type: 'shadow'}},
-			grid: {top: '8%', bottom: '12%', left: '4%', right: '16%', containLabel: true},
+			grid: horizontal
+				? {top: 12, bottom: 28, left: 112, right: '16%', containLabel: false}
+				: {top: '8%', bottom: '12%', left: '4%', right: '16%', containLabel: true},
 			xAxis: horizontal ? axis('value') : category,
 			yAxis: horizontal ? category : axis('value'),
 			series: [{name: '报废数量（米）', type: 'bar', barMaxWidth: horizontal ? 18 : 36, itemStyle: {color: color, borderRadius: horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0]}, data: data.map(function(item) {return Number(item.value);}), label: {show: true, position: horizontal ? 'right' : 'top', color: '#c8d6e5', fontSize: 11}, labelLayout: {hideOverlap: true}}]
 		};
+	}
+	function renderRanking(id, items, color) {
+		var element = document.getElementById(id);
+		var lines = items.reduce(function(maximum, item) {
+			var width = echarts.format.getTextRect(String(item.name), '11px sans-serif').width;
+			return Math.max(maximum, Math.ceil(width / 88));
+		}, 1);
+		element.parentElement.classList.add('ranking-card');
+		element.style.minHeight = Math.max(180, items.length * (lines * 14 + 4) + 40) + 'px';
+		charts[id].resize();
+		charts[id].setOption(barOption(items, color, true), true);
 	}
 	function pieOption(items, donut, total) {
 		var option = {
@@ -102,13 +119,13 @@
 			series: result.category_trend.map(function(item, index) {return {name: item.name, type: 'line', stack: 'total', areaStyle: {opacity: 0.6}, itemStyle: {color: colors[index % colors.length]}, lineStyle: {width: 1}, symbol: 'none', data: item.data.map(Number)};})
 		}, true);
 		charts['chart-defect-cat'].setOption(pieOption(result.categories, true, result.total), true);
-		charts['chart-defect-top10'].setOption(barOption(result.defects, colors[0], true), true);
+		renderRanking('chart-defect-top10', result.defects, colors[0]);
 		charts['chart-team'].setOption(barOption(result.teams, colors[1], false), true);
-		charts['chart-device'].setOption(barOption(result.devices, colors[6], true), true);
-		charts['chart-inspector'].setOption(barOption(result.inspectors, colors[5], true), true);
+		renderRanking('chart-device', result.devices, colors[6]);
+		renderRanking('chart-inspector', result.inspectors, colors[5]);
 		charts['chart-barcode'].setOption(pieOption(result.barcodes, false), true);
 		charts['chart-scrap-cat'].setOption(pieOption(result.scrap_categories, true), true);
-		charts['chart-product'].setOption(barOption(result.products, colors[1], true), true);
+		renderRanking('chart-product', result.products, colors[1]);
 	}
 	function clearCharts() {
 		render({days: [], total: 0, category_trend: [], categories: [], defects: [], teams: [], devices: [], inspectors: [], barcodes: [], scrap_categories: [], products: []});

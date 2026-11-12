@@ -20,6 +20,12 @@ def _create_area_fixture(database):
 		for site in ('china^907371', 'china^928261')
 		for code in ('Weaving Process', 'Dyeing Process', 'Finishing Process')
 	])
+	database.execute('CREATE TABLE type_fixture (SERVER_SITE_NAME, code, active)')
+	database.executemany('INSERT INTO type_fixture VALUES (?, ?, ?)', [
+		(site, code, 'true')
+		for site in ('china^907371', 'china^928261')
+		for code in (*get_safety_context()['dispatch_types'], *IMPROVEMENT_DISPATCH_TYPE_CODES)
+	])
 
 
 @override_settings(TIME_ZONE='Asia/Shanghai', SNOWFLAKE_DISPATCH_TIME_ZONE='Asia/Shanghai')
@@ -74,6 +80,7 @@ class ImprovementCountsTests(SimpleTestCase):
 			def execute(query, params):
 				query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES', 'dispatch_fixture').replace('%s', '?')
 				query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_AREAS', 'area_fixture')
+				query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHTYPES', 'type_fixture')
 				params = [value.isoformat(' ') if isinstance(value, datetime) else value for value in params]
 				self.cursor.fetchall.return_value = database.execute(query, params).fetchall()
 			self.cursor.execute.side_effect = execute
@@ -145,6 +152,7 @@ class SnowflakeCutoffTests(SimpleTestCase):
 		def execute(query, params):
 			query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES', 'dispatch_fixture').replace('%s', '?')
 			query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_AREAS', 'area_fixture')
+			query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHTYPES', 'type_fixture')
 			params = [value.isoformat(' ') if isinstance(value, datetime) else value for value in params]
 			self.cursor.fetchall.return_value = self.database.execute(query, params).fetchall()
 		self.cursor.execute.side_effect = execute
@@ -188,6 +196,22 @@ class SnowflakeCutoffTests(SimpleTestCase):
 			self.assertEqual(loader(self.now, start=start, end=end)['reported'], 0)
 		for loader in (get_safety_trend, get_improvement_trend):
 			self.assertEqual(loader(start, end)['points'][0]['reported'], 0)
+
+
+	def test_type_rules_filter_both_kpis_and_trends_by_factory(self):
+		start, end = datetime(2026, 1, 1), datetime(2026, 1, 1, 23, 59)
+		self.database.execute("INSERT INTO type_fixture SELECT SERVER_SITE_NAME, code, ' TRUE ' FROM type_fixture WHERE SERVER_SITE_NAME = 'china^907371'")
+		for loader in (get_safety_counts, get_improvement_counts):
+			result = loader(self.now, start=start, end=end)
+			self.assertEqual((result['reported'], result['completed'], result['unclosed']), (1, 1, 1))
+		for loader in (get_safety_trend, get_improvement_trend):
+			self.assertEqual(loader(start, end)['points'], [{'date': '2026-01-01', 'reported': 1}])
+		self.database.execute("UPDATE type_fixture SET active = 'false' WHERE SERVER_SITE_NAME = 'china^907371'")
+		for loader in (get_safety_counts, get_improvement_counts):
+			result = loader(self.now, start=start, end=end)
+			self.assertEqual((result['reported'], result['completed'], result['unclosed']), (0, 0, 0))
+		for loader in (get_safety_trend, get_improvement_trend):
+			self.assertEqual(loader(start, end)['points'], [{'date': '2026-01-01', 'reported': 0}])
 
 
 class DpmuTrendTests(SimpleTestCase):
@@ -481,6 +505,7 @@ class SafetyCountsTests(SimpleTestCase):
 			def execute(query, params):
 				query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES', 'dispatch_fixture').replace('%s', '?')
 				query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_AREAS', 'area_fixture')
+				query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHTYPES', 'type_fixture')
 				params = [value.isoformat(' ') if isinstance(value, datetime) else value for value in params]
 				self.cursor.fetchall.return_value = database.execute(query, params).fetchall()
 			self.cursor.execute.side_effect = execute
@@ -542,6 +567,7 @@ class SafetyCountsTests(SimpleTestCase):
 			def execute(query, params):
 				query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES', 'dispatch_fixture').replace('%s', '?')
 				query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_AREAS', 'area_fixture')
+				query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHTYPES', 'type_fixture')
 				params = [value.isoformat(' ') if isinstance(value, datetime) else value for value in params]
 				self.cursor.fetchall.return_value = database.execute(query, params).fetchall()
 			self.cursor.execute.side_effect = execute

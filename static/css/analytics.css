@@ -101,6 +101,7 @@
 		overflow: hidden;
 	}
 	.analytics-page .card-title { margin-bottom: 5px; font-size: 12px; }
+	.analytics-page .card.ranking-card { overflow-y: auto; }
 	.analytics-page .chart-container,
 	.analytics-page .chart-container-sm,
 	.analytics-page .chart-container-lg {

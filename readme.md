@@ -7,6 +7,7 @@
 - 已统一接入当前所有 Snowflake 页面：Dispatch 的筛选候选项、KPI、图表与逐条 Excel 导出，以及生产早会的安全、改善 KPI 和趋势。业务记录必须在同一工厂存在符合上述条件的区域主数据；未知区域、停用区域和 `superuser` 创建的区域均不计入，不能通过手动传入区域参数绕过。
 - Dispatch 区域候选项直接来自区域主数据，即使该区域没有 Dispatch 记录也保留。提交人及类型候选项只取有效区域下的业务记录。生产早会保留原有织、染、整三个生产区域范围，再应用相同主数据校验；其他非 Snowflake 数据源不变。
 - 按本次统一要求，历史查询和 Excel 导出也应用当前区域有效性，因此当前停用或系统创建区域的旧记录不再计入；这不修改任何源记录。SQL 使用按工厂及区域代码关联的 `EXISTS`，主数据重复行不会放大数量。公共 `ACTIVE_AREA_CONDITIONS_SQL` 与 `ACTIVE_DISPATCH_AREA_FILTER_SQL` 共用同一规则；后者要求业务表别名为 `dispatch_source`。
+- Dispatch 类型还必须在 `PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHTYPES` 中处于在用状态：`SERVER_SITE_NAME` 区分工厂（`china^907371` 为 ACX，`china^928261` 为 CNX），`code` 对应业务明细的 `dispatchtypecode`，仅保留 `active=true` 的非空代码。公共 `ACTIVE_DISPATCH_TYPE_FILTER_SQL` 按同工厂及去除首尾空白后的代码使用 `EXISTS` 匹配，状态比较忽略大小写及首尾空白；重复主数据不放大数量。不匹配、空值或停用的类型均排除，不对类型额外限制创建人。此规则与区域规则叠加，应用于 Dispatch 候选项、KPI、图表、历史查询、Excel 明细导出，以及早会安全和改善 KPI、趋势；区域候选项仍直接来自区域主数据。
 
 ```python
 from common.snowflake import get_active_areas

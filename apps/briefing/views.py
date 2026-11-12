@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
-from common.snowflake import ACTIVE_DISPATCH_AREA_FILTER_SQL
+from common.snowflake import ACTIVE_DISPATCH_AREA_FILTER_SQL, ACTIVE_DISPATCH_TYPE_FILTER_SQL
 
 
 logger = logging.getLogger(__name__)
@@ -100,6 +100,7 @@ WITH dispatches AS (
 	WHERE "areacode" IN ({area_placeholders}) AND "dispatchtypecode" IN ({type_placeholders})
       AND "SERVER_SITE_NAME" IN ({site_placeholders})
 			AND {ACTIVE_DISPATCH_AREA_FILTER_SQL}
+			AND {ACTIVE_DISPATCH_TYPE_FILTER_SQL}
 )
 SELECT
 	area_code,
@@ -169,6 +170,7 @@ WITH dispatches AS (
       AND "dispatchtypecode" IN ({type_placeholders})
       AND "SERVER_SITE_NAME" IN ({site_placeholders})
 	AND {ACTIVE_DISPATCH_AREA_FILTER_SQL}
+	AND {ACTIVE_DISPATCH_TYPE_FILTER_SQL}
 )
 SELECT TO_CHAR(DATE_TRUNC(%s, reported_at), 'YYYY-MM-DD') AS period, area_code, COUNT(*)
 FROM dispatches
