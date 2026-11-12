@@ -2,7 +2,7 @@ from collections import Counter
 
 from django.conf import settings
 
-from common.snowflake import fetch_all
+from common.snowflake import ACTIVE_DISPATCH_AREA_FILTER_SQL, fetch_all, get_active_areas
 
 
 def get_dispatch_filter_options():
@@ -11,13 +11,15 @@ def get_dispatch_filter_options():
 		'china^' + str(getattr(settings, 'L2L_SITE_' + site)): site
 		for site in ('ACX', 'CNX')
 	}
-	rows = fetch_all('''
+	active_areas = get_active_areas()
+	rows = fetch_all(f'''
 WITH filter_values AS (
 	SELECT "SERVER_SITE_NAME" AS site, TRIM("areacode") AS area,
 		TRIM("createdby") AS submitter, TRIM("dispatchtypecode") AS dispatch_type
-	FROM PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES
+	FROM PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES AS dispatch_source
 	WHERE "SERVER_SITE_NAME" IN (%s, %s)
 		AND COALESCE(LOWER(TRIM("deleted")), '') NOT IN ('t', 'true', '1')
+		AND {ACTIVE_DISPATCH_AREA_FILTER_SQL}
 )
 SELECT DISTINCT site AS "site", 'areas' AS "dimension", area AS "value"
 FROM filter_values WHERE NULLIF(area, '') IS NOT NULL
@@ -28,9 +30,10 @@ UNION ALL
 SELECT DISTINCT site AS "site", 'dispatchtypes' AS "dimension", dispatch_type AS "value"
 FROM filter_values WHERE NULLIF(dispatch_type, '') IS NOT NULL
 ''', list(server_sites))
-	options = {site: {'areas': [], 'technicians': [], 'dispatchtypes': []} for site in ('ACX', 'CNX')}
+	options = {site: {'areas': active_areas[site], 'technicians': [], 'dispatchtypes': []} for site in ('ACX', 'CNX')}
 	for row in rows:
-		options[server_sites[row['site']]][row['dimension']].append(row['value'])
+		if row['dimension'] != 'areas':
+			options[server_sites[row['site']]][row['dimension']].append(row['value'])
 	for values in options.values():
 		for dimension in values:
 			values[dimension].sort()
@@ -57,9 +60,10 @@ WITH dispatches AS (
 				OR NULLIF(TRIM("completed"), '') IS NOT NULL THEN 'IN WORK'
 			ELSE 'OPEN'
 		END AS status
-	FROM PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES
+	FROM PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES AS dispatch_source
 	WHERE "SERVER_SITE_NAME" IN ({site_placeholders})
 		AND COALESCE(LOWER(TRIM("deleted")), '') NOT IN ('t', 'true', '1')
+		AND {ACTIVE_DISPATCH_AREA_FILTER_SQL}
 )
 SELECT TO_CHAR(reported_at, 'YYYY-MM') AS "month", area AS "area",
 	submitter AS "submitter", dispatch_type AS "type", status AS "status", COUNT(*) AS "count"
@@ -91,9 +95,10 @@ WITH dispatch_details AS (
 		COALESCE(TRIM("areacode"), '') AS area,
 		COALESCE(TRIM("createdby"), '') AS submitter,
 		COALESCE(TRIM("dispatchtypecode"), '') AS dispatch_type
-	FROM PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES
+	FROM PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES AS dispatch_source
 	WHERE "SERVER_SITE_NAME" IN ({site_placeholders})
 		AND COALESCE(LOWER(TRIM("deleted")), '') NOT IN ('t', 'true', '1')
+		AND {ACTIVE_DISPATCH_AREA_FILTER_SQL}
 )
 SELECT factory AS "factory", reported_at AS "reported", area AS "area", dispatch_type AS "type"
 FROM dispatch_details

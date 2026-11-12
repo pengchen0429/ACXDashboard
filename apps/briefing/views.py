@@ -10,6 +10,8 @@ from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
+from common.snowflake import ACTIVE_DISPATCH_AREA_FILTER_SQL
+
 
 logger = logging.getLogger(__name__)
 
@@ -94,9 +96,10 @@ WITH dispatches AS (
 		CONVERT_TIMEZONE(%s, 'Asia/Shanghai', TRY_TO_TIMESTAMP_NTZ("completed")) AS completed_at,
 		CONVERT_TIMEZONE(%s, 'Asia/Shanghai', TRY_TO_TIMESTAMP_NTZ("closed")) AS closed_at,
 		NULLIF(TRIM("closed"), '') AS closed_value
-    FROM PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES
+		FROM PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES AS dispatch_source
 	WHERE "areacode" IN ({area_placeholders}) AND "dispatchtypecode" IN ({type_placeholders})
       AND "SERVER_SITE_NAME" IN ({site_placeholders})
+			AND {ACTIVE_DISPATCH_AREA_FILTER_SQL}
 )
 SELECT
 	area_code,
@@ -161,10 +164,11 @@ def get_safety_trend(start, end, *, dispatch_types=None):
 WITH dispatches AS (
 	SELECT "areacode" AS area_code,
 		CONVERT_TIMEZONE(%s, 'Asia/Shanghai', TRY_TO_TIMESTAMP_NTZ("reported")) AS reported_at
-    FROM PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES
+	FROM PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES AS dispatch_source
     WHERE "areacode" IN ({area_placeholders})
       AND "dispatchtypecode" IN ({type_placeholders})
       AND "SERVER_SITE_NAME" IN ({site_placeholders})
+	AND {ACTIVE_DISPATCH_AREA_FILTER_SQL}
 )
 SELECT TO_CHAR(DATE_TRUNC(%s, reported_at), 'YYYY-MM-DD') AS period, area_code, COUNT(*)
 FROM dispatches

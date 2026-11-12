@@ -1,3 +1,20 @@
+# Snowflake 区域主数据
+
+- 后续新增或调整 Snowflake 数据源的区域标称、筛选和映射时，先核对 `PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_AREAS`，不要只从业务明细中推断当前在用区域。
+- `SERVER_SITE_NAME` 区分工厂：`china^907371` 为 ACX，`china^928261` 为 CNX；`code` 是区域代码。`active` 当前为文本列，`true` 为在用，`false` 为停用。创建人字段为 `createdby`，`created` 实际是创建时间。
+- 公共函数 `common.snowflake.get_active_areas(sites=('ACX', 'CNX'))` 返回按工厂分组的区域代码列表；也支持单厂 `get_active_areas('ACX')` 或多厂列表。只返回在用且非空的代码，并排除 `createdby=superuser` 的区域（比较时忽略大小写及首尾空白，空创建人保留）。代码去除首尾空白、去重并排序；无符合条件的区域时返回该工厂的空列表，查询失败抛出异常。
+- 同名区域仍属于各自工厂，关联业务数据时必须同时匹配工厂和区域代码，不能仅按 `code` 跨厂关联。展示名称与数据源原始代码分开维护。
+- 已统一接入当前所有 Snowflake 页面：Dispatch 的筛选候选项、KPI、图表与逐条 Excel 导出，以及生产早会的安全、改善 KPI 和趋势。业务记录必须在同一工厂存在符合上述条件的区域主数据；未知区域、停用区域和 `superuser` 创建的区域均不计入，不能通过手动传入区域参数绕过。
+- Dispatch 区域候选项直接来自区域主数据，即使该区域没有 Dispatch 记录也保留。提交人及类型候选项只取有效区域下的业务记录。生产早会保留原有织、染、整三个生产区域范围，再应用相同主数据校验；其他非 Snowflake 数据源不变。
+- 按本次统一要求，历史查询和 Excel 导出也应用当前区域有效性，因此当前停用或系统创建区域的旧记录不再计入；这不修改任何源记录。SQL 使用按工厂及区域代码关联的 `EXISTS`，主数据重复行不会放大数量。公共 `ACTIVE_AREA_CONDITIONS_SQL` 与 `ACTIVE_DISPATCH_AREA_FILTER_SQL` 共用同一规则；后者要求业务表别名为 `dispatch_source`。
+
+```python
+from common.snowflake import get_active_areas
+
+areas_by_site = get_active_areas()
+acx_area_codes = get_active_areas('ACX')['ACX']
+```
+
 # 产线产量详情
 
 - 点击运营总览的“今日产量”卡片进入 `/dashboard/production/`，模板为 `templates/dashboard/production_detail.html`，继承 `base.html`；入口为原生链接，可通过键盘、右键或新标签页访问。

@@ -13,6 +13,15 @@ from .views import (
 )
 
 
+def _create_area_fixture(database):
+	database.execute('CREATE TABLE area_fixture (SERVER_SITE_NAME, code, active, createdby)')
+	database.executemany('INSERT INTO area_fixture VALUES (?, ?, ?, ?)', [
+		(site, code, 'true', 'operator')
+		for site in ('china^907371', 'china^928261')
+		for code in ('Weaving Process', 'Dyeing Process', 'Finishing Process')
+	])
+
+
 @override_settings(TIME_ZONE='Asia/Shanghai', SNOWFLAKE_DISPATCH_TIME_ZONE='Asia/Shanghai')
 class ImprovementCountsTests(SimpleTestCase):
 	def setUp(self):
@@ -43,6 +52,7 @@ class ImprovementCountsTests(SimpleTestCase):
 
 	def test_sql_uses_safety_counting_rules_for_all_four_types(self):
 		with sqlite3.connect(':memory:') as database:
+			_create_area_fixture(database)
 			database.create_function('CONVERT_TIMEZONE', 3, lambda source, target, value: value)
 			database.create_function('TRY_TO_TIMESTAMP_NTZ', 1, lambda value: value)
 			database.execute('CREATE TABLE dispatch_fixture (areacode, dispatchtypecode, SERVER_SITE_NAME, reported, completed, closed)')
@@ -63,6 +73,7 @@ class ImprovementCountsTests(SimpleTestCase):
 			database.executemany('INSERT INTO dispatch_fixture VALUES (?, ?, ?, ?, ?, ?)', rows)
 			def execute(query, params):
 				query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES', 'dispatch_fixture').replace('%s', '?')
+				query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_AREAS', 'area_fixture')
 				params = [value.isoformat(' ') if isinstance(value, datetime) else value for value in params]
 				self.cursor.fetchall.return_value = database.execute(query, params).fetchall()
 			self.cursor.execute.side_effect = execute
@@ -116,6 +127,7 @@ class SnowflakeCutoffTests(SimpleTestCase):
 		self.now = datetime(2026, 1, 2, 1, tzinfo=datetime_timezone.utc)
 		self.database = sqlite3.connect(':memory:')
 		self.addCleanup(self.database.close)
+		_create_area_fixture(self.database)
 		self.database.create_function('CONVERT_TIMEZONE', 3, lambda source, target, value: value)
 		self.database.create_function('TRY_TO_TIMESTAMP_NTZ', 1, lambda value: value)
 		self.database.create_function('DATE_TRUNC', 2, lambda unit, value: value[:10])
@@ -132,6 +144,7 @@ class SnowflakeCutoffTests(SimpleTestCase):
 		self.cursor = self.connections['snowflake'].cursor.return_value.__enter__.return_value
 		def execute(query, params):
 			query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES', 'dispatch_fixture').replace('%s', '?')
+			query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_AREAS', 'area_fixture')
 			params = [value.isoformat(' ') if isinstance(value, datetime) else value for value in params]
 			self.cursor.fetchall.return_value = self.database.execute(query, params).fetchall()
 		self.cursor.execute.side_effect = execute
@@ -152,6 +165,29 @@ class SnowflakeCutoffTests(SimpleTestCase):
 				self.assertEqual(result['points'], [
 					{'date': '2025-12-31', 'reported': 0}, {'date': '2026-01-01', 'reported': 1},
 				])
+
+	def test_area_rules_filter_both_kpis_and_both_trends_without_multiplying_rows(self):
+		self.database.execute('DELETE FROM dispatch_fixture')
+		self.database.execute("UPDATE area_fixture SET active = 'false' WHERE code = 'Dyeing Process'")
+		self.database.execute("UPDATE area_fixture SET createdby = ' SuperUser ' WHERE code = 'Finishing Process'")
+		self.database.execute("INSERT INTO area_fixture VALUES ('china^907371', 'Weaving Process', 'true', 'operator')")
+		for dispatch_type in (get_safety_context(self.now)['dispatch_types'][0], IMPROVEMENT_DISPATCH_TYPE_CODES[0]):
+			self.database.executemany('INSERT INTO dispatch_fixture VALUES (?, ?, ?, ?, ?, ?)', [
+				(code, dispatch_type, 'china^907371', '2026-01-01 10:00:00', '2026-01-01 11:00:00', None)
+				for code in ('Weaving Process', 'Dyeing Process', 'Finishing Process', 'Missing')
+			])
+		start, end = datetime(2026, 1, 1), datetime(2026, 1, 1, 23, 59)
+		with patch('apps.briefing.views.SAFETY_AREA_CODES', ('Weaving Process', 'Dyeing Process', 'Finishing Process', 'Missing')):
+			for loader in (get_safety_counts, get_improvement_counts):
+				result = loader(self.now, start=start, end=end)
+				self.assertEqual((result['reported'], result['completed'], result['unclosed']), (1, 1, 1))
+			for loader in (get_safety_trend, get_improvement_trend):
+				self.assertEqual(loader(start, end)['points'], [{'date': '2026-01-01', 'reported': 1}])
+		self.database.execute("UPDATE area_fixture SET active = 'false' WHERE SERVER_SITE_NAME = 'china^907371'")
+		for loader in (get_safety_counts, get_improvement_counts):
+			self.assertEqual(loader(self.now, start=start, end=end)['reported'], 0)
+		for loader in (get_safety_trend, get_improvement_trend):
+			self.assertEqual(loader(start, end)['points'][0]['reported'], 0)
 
 
 class DpmuTrendTests(SimpleTestCase):
@@ -415,6 +451,7 @@ class SafetyCountsTests(SimpleTestCase):
 
 	def test_window_completion_and_current_unclosed_are_separate(self):
 		with sqlite3.connect(':memory:') as database:
+			_create_area_fixture(database)
 			database.create_function('CONVERT_TIMEZONE', 3, lambda source, target, value: value)
 			def parse_timestamp(value):
 				try:
@@ -443,6 +480,7 @@ class SafetyCountsTests(SimpleTestCase):
 			])
 			def execute(query, params):
 				query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES', 'dispatch_fixture').replace('%s', '?')
+				query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_AREAS', 'area_fixture')
 				params = [value.isoformat(' ') if isinstance(value, datetime) else value for value in params]
 				self.cursor.fetchall.return_value = database.execute(query, params).fetchall()
 			self.cursor.execute.side_effect = execute
@@ -478,6 +516,7 @@ class SafetyCountsTests(SimpleTestCase):
 
 	def test_trend_sql_combines_areas_and_filters_site_and_boundaries(self):
 		with sqlite3.connect(':memory:') as database:
+			_create_area_fixture(database)
 			database.create_function('CONVERT_TIMEZONE', 3, lambda source, target, value: value)
 			database.create_function('TRY_TO_TIMESTAMP_NTZ', 1, lambda value: value)
 			database.create_function('DATE_TRUNC', 2, lambda unit, value: value[:10])
@@ -502,6 +541,7 @@ class SafetyCountsTests(SimpleTestCase):
 			))
 			def execute(query, params):
 				query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES', 'dispatch_fixture').replace('%s', '?')
+				query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_AREAS', 'area_fixture')
 				params = [value.isoformat(' ') if isinstance(value, datetime) else value for value in params]
 				self.cursor.fetchall.return_value = database.execute(query, params).fetchall()
 			self.cursor.execute.side_effect = execute

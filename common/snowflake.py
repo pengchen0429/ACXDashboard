@@ -3,6 +3,24 @@ import sqlparse
 from django.db import connections
 
 
+SNOWFLAKE_SITE_NAMES = {
+	'ACX': 'china^907371',
+	'CNX': 'china^928261',
+}
+
+
+ACTIVE_AREA_CONDITIONS_SQL = '''LOWER(TRIM("active")) = 'true'
+	AND COALESCE(LOWER(TRIM("createdby")), '') <> 'superuser'
+	AND NULLIF(TRIM("code"), '') IS NOT NULL'''
+
+ACTIVE_DISPATCH_AREA_FILTER_SQL = f'''EXISTS (
+	SELECT 1 FROM PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_AREAS
+	WHERE "SERVER_SITE_NAME" = dispatch_source."SERVER_SITE_NAME"
+		AND TRIM("code") = TRIM(dispatch_source."areacode")
+		AND {ACTIVE_AREA_CONDITIONS_SQL}
+)'''
+
+
 def _validate_select(sql):
 	"""校验查询为单条 SELECT，允许 WITH 查询；实际只读权限由数据库角色保证。"""
 	if not isinstance(sql, str) or not sql.strip():
@@ -49,3 +67,33 @@ def fetch_one(sql, params=None):
 			return None
 		columns = [column[0] for column in cursor.description]
 		return dict(zip(columns, row))
+
+
+def get_active_areas(sites=('ACX', 'CNX')):
+	"""返回各工厂在用区域代码，如 {'ACX': ['Weaving Process'], 'CNX': []}。
+
+	sites 接受工厂名称或名称列表，默认读取两厂。区域以 VW_AREAS.code 为准，
+	只包含 active=true 且 createdby 非 superuser 的非空代码；创建人比较
+	忽略大小写和首尾空白，空创建人保留。区域代码去除首尾空白、去重并排序。
+	后续 Snowflake 区域筛选、标称和映射应先核对此主数据。当前 Dispatch、早会
+	及其历史查询和导出均按本规则过滤，不修改源记录。查询失败直接抛出异常。
+	"""
+	if isinstance(sites, str):
+		sites = (sites,)
+	if not isinstance(sites, (list, tuple)) or not sites or any(
+		not isinstance(site, str) or site not in SNOWFLAKE_SITE_NAMES for site in sites):
+		raise ValueError('sites must contain ACX or CNX')
+	sites = tuple(dict.fromkeys(sites))
+	server_sites = {SNOWFLAKE_SITE_NAMES[site]: site for site in sites}
+	placeholders = ', '.join(['%s'] * len(server_sites))
+	rows = fetch_all(f'''
+SELECT DISTINCT "SERVER_SITE_NAME" AS "server_site_name", TRIM("code") AS "area"
+FROM PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_AREAS
+WHERE "SERVER_SITE_NAME" IN ({placeholders})
+	AND {ACTIVE_AREA_CONDITIONS_SQL}
+ORDER BY "server_site_name", "area"
+''', list(server_sites))
+	areas = {site: [] for site in sites}
+	for row in rows:
+		areas[server_sites[row['server_site_name']]].append(row['area'])
+	return areas

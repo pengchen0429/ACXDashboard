@@ -26,6 +26,10 @@ class DispatchSnowflakeTests(SimpleTestCase):
 		self.database.create_function('TRY_TO_TIMESTAMP_NTZ', 1, self.parse_timestamp)
 		self.database.create_function('CONVERT_TIMEZONE', 3, self.convert_timezone)
 		self.database.create_function('TO_CHAR', 2, lambda value, pattern: value[:7])
+		self.database.execute('CREATE TABLE area_fixture (SERVER_SITE_NAME, code, active, createdby)')
+		self.database.executemany('INSERT INTO area_fixture VALUES (?, ?, ?, ?)', [
+			('china^907371', code, 'true', 'operator') for code in ('A', 'B', 'C', 'Invalid', 'Outside')
+		] + [('china^928261', 'CNX', 'true', 'operator')])
 		self.database.execute('''CREATE TABLE dispatches (
 			SERVER_SITE_NAME TEXT, reported TEXT, areacode TEXT, createdby TEXT,
 			dispatchtypecode TEXT, completed TEXT, closed TEXT, dispatched TEXT, deleted TEXT
@@ -43,6 +47,7 @@ class DispatchSnowflakeTests(SimpleTestCase):
 			('china^928261', '2026-11-01T12:00:00', 'CNX', 'CNX', 'Safety', None, None, None, ''),
 		])
 		self.fetch = patch('apps.dispatch.services.fetch_all', side_effect=self.execute_query).start()
+		patch('common.snowflake.fetch_all', side_effect=self.execute_query).start()
 		self.addCleanup(patch.stopall)
 
 	@staticmethod
@@ -61,6 +66,7 @@ class DispatchSnowflakeTests(SimpleTestCase):
 
 	def execute_query(self, query, params):
 		query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES', 'main.dispatches')
+		query = query.replace('PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_AREAS', 'area_fixture')
 		params = [value.isoformat(sep=' ') if isinstance(value, datetime) else value for value in params]
 		return [dict(row) for row in self.database.execute(query.replace('%s', '?'), params)]
 
@@ -88,6 +94,26 @@ class DispatchSnowflakeTests(SimpleTestCase):
 		self.assertEqual(data['stats']['total'], 3)
 		self.assertEqual(data['areas'], [{'name': 'A', 'OPEN': 1, 'IN WORK': 0, 'CLOSED': 2}])
 		self.assertEqual(data['options']['technicians'], ['Alice', 'Bob', 'Carol'])
+
+	def test_area_rules_apply_to_options_summary_and_detail_export(self):
+		self.database.executemany('INSERT INTO area_fixture VALUES (?, ?, ?, ?)', [
+			('china^907371', 'Inactive', 'false', 'operator'),
+			('china^907371', 'System', 'true', ' SuperUser '),
+			('china^928261', 'Cross-site', 'true', 'operator'),
+			('china^907371', 'Unused', 'true', 'operator'),
+			('china^907371', 'A', 'true', 'operator'),
+		])
+		self.database.executemany('INSERT INTO dispatches (SERVER_SITE_NAME, reported, areacode, createdby, dispatchtypecode) VALUES (?, ?, ?, ?, ?)', [
+			('china^907371', '2026-11-02T00:00:00', code, 'Excluded Person', 'Excluded Type')
+			for code in ('Inactive', 'System', 'Cross-site', 'Missing', '')
+		])
+		options = get_dispatch_filter_options()['ACX']
+		self.assertIn('Unused', options['areas'])
+		self.assertNotIn('Excluded Person', options['technicians'])
+		self.assertNotIn('Excluded Type', options['dispatchtypes'])
+		self.assertTrue(all(code not in options['areas'] for code in ('Inactive', 'System', 'Cross-site', 'Missing')))
+		self.assertEqual(get_dispatch_summary(self.start, self.end, site='ACX')['stats']['total'], 5)
+		self.assertEqual(len(get_dispatch_details(self.start, self.end, site='ACX')), 5)
 
 	def test_completed_without_closed_is_not_closed(self):
 		data = get_dispatch_summary(self.start, self.end, site='ACX', technicians=['Carol'])
@@ -128,7 +154,7 @@ class DispatchSnowflakeTests(SimpleTestCase):
 	@override_settings(SNOWFLAKE_DISPATCH_TIME_ZONE='UTC')
 	def test_source_timezone_and_month_are_converted_before_filtering(self):
 		self.database.execute('DELETE FROM dispatches')
-		self.database.executemany('INSERT INTO dispatches (SERVER_SITE_NAME, reported) VALUES (?, ?)', [
+		self.database.executemany("INSERT INTO dispatches (SERVER_SITE_NAME, reported, areacode) VALUES (?, ?, 'A')", [
 			('china^907371', '2026-10-31T15:59:59'),
 			('china^907371', '2026-10-31T16:00:00'),
 			('china^907371', '2026-11-30T16:00:00'),
