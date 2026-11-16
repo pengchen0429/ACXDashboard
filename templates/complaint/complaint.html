@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}客户投诉管理 - CNSX数据看板{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="{% static 'css/complaint.css' %}?v=manual-query-paths-1">
+<script src="{% static 'js/echarts.min.js' %}"></script>
+{% endblock %}
+
+{% block content %}
+<div class="complaint-page" data-records-url="{% url 'complaint-records' %}" data-record-url="{% url 'complaint-record' 0 %}" data-images-url="{% url 'complaint-images' %}" data-csrf-token="{{ csrf_token }}" data-can-add="{{ perms.complaint.add_complaintlist|yesno:'true,false' }}" data-can-change="{{ perms.complaint.change_complaintlist|yesno:'true,false' }}" data-can-delete="{{ perms.complaint.delete_complaintlist|yesno:'true,false' }}">
+<!-- SECTION: header -->
+<div class="header">
+  <h1>📣 客户投诉管理</h1>
+  <div class="clock" id="clock"></div>
+</div>
+
+<div class="main">
+  <!-- SECTION: filter-bar -->
+  <div class="filter-bar">
+    <div class="filter-row">
+      <div class="filter-group">
+        <div class="filter-label">投诉时间</div>
+        <div class="date-range">
+          <input type="datetime-local" class="text-input" id="fDateFrom" aria-label="投诉开始时间" style="padding:0 8px;">
+          <span style="color:var(--text-muted);font-size:12px;">至</span>
+          <input type="datetime-local" class="text-input" id="fDateTo" aria-label="投诉结束时间" style="padding:0 8px;">
+        </div>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">分类（多选）</div>
+        <div class="multi-select" id="msType">
+          <button type="button" class="multi-select-trigger" aria-expanded="false" aria-label="分类筛选">全部分类</button>
+          <div class="multi-select-dropdown"><div class="options-list"></div></div>
+        </div>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">投诉等级（多选）</div>
+        <div class="multi-select" id="msLevel">
+          <button type="button" class="multi-select-trigger" aria-expanded="false" aria-label="投诉等级筛选">全部等级</button>
+          <div class="multi-select-dropdown"><div class="options-list"></div></div>
+        </div>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">处理状态（多选）</div>
+        <div class="multi-select" id="msStatus">
+          <button type="button" class="multi-select-trigger" aria-expanded="false" aria-label="处理状态筛选">全部状态</button>
+          <div class="multi-select-dropdown"><div class="options-list"></div></div>
+        </div>
+      </div>
+      <div class="btn-group filter-actions">
+        <button class="btn btn-primary" id="btnQuery">🔍 查询</button>
+        <button class="btn btn-secondary" id="btnReset">↺ 重置</button>
+        <button class="btn btn-success" id="btnAdd" data-primary-action disabled>＋ 新增投诉</button>
+        <button class="btn btn-secondary" id="btnExport" disabled>📥 导出 CSV</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION: stats -->
+  <div class="stats-row">
+    <div class="stat-card"><div class="stat-label">投诉总数</div><div class="stat-value" id="stTotal">0</div><div class="stat-sub">筛选范围内</div></div>
+    <div class="stat-card"><div class="stat-label">待处理</div><div class="stat-value" id="stPending">0</div><div class="stat-sub">需尽快响应</div></div>
+    <div class="stat-card"><div class="stat-label">处理中</div><div class="stat-value" id="stWorking">0</div><div class="stat-sub">跟进中</div></div>
+    <div class="stat-card"><div class="stat-label">已解决/关闭</div><div class="stat-value" id="stClosed">0</div><div class="stat-sub">完结件数</div></div>
+    <div class="stat-card"><div class="stat-label">平均处理时长</div><div class="stat-value" id="stAvg">0</div><div class="stat-sub">天 · 目标 ≤ 7</div></div>
+    <div class="stat-card"><div class="stat-label">严重投诉未结</div><div class="stat-value" id="stSevere">0</div><div class="stat-sub">高优先级关注</div></div>
+  </div>
+
+  <!-- SECTION: charts -->
+  <div class="charts-grid">
+    <div class="chart-card">
+      <div class="chart-card-title">月度投诉趋势</div>
+      <div class="chart-box" id="chartTrend" data-chart="true"></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-card-title">投诉分类分布</div>
+      <div class="chart-box" id="chartType" data-chart="true"></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-card-title">投诉等级 × 处理状态</div>
+      <div class="chart-box" id="chartLevel" data-chart="true"></div>
+    </div>
+  </div>
+
+  <!-- SECTION: table -->
+  <div class="table-card">
+    <div class="table-header">
+      <div class="table-title">📋 投诉列表 <span class="count" id="tblCount"></span></div>
+    </div>
+    <p class="data-status" id="dataStatus" role="status" aria-live="polite" hidden></p>
+    <div class="table-wrapper" id="tblWrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>编号</th><th>区域</th><th>时间</th><th>客户</th><th>投诉等级</th><th>带型</th>
+            <th>投诉点</th><th>分类</th><th>投诉图片</th><th>根本原因</th><th>纠正措施</th>
+            <th>责任人</th><th>完成时间</th><th>状态</th><th>备注</th><th class="actions-cell">操作</th>
+          </tr>
+        </thead>
+        <tbody id="tblBody"></tbody>
+      </table>
+    </div>
+    <div class="empty-tip" id="emptyTip">没有符合筛选条件的投诉记录</div>
+    <div class="pagination">
+      <span id="pageInfo">共 0 条</span>
+      <div class="page-btns" id="pageBtns"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION: form-modal -->
+<div class="modal-overlay" id="formModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="formTitle">新增投诉</div>
+      <button class="modal-close" data-close="formModal">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-field">
+          <label for="fmId">编号</label>
+          <input type="text" class="text-input" id="fmId" readonly style="color:var(--text-muted);">
+        </div>
+        <div class="form-field">
+          <label for="fmArea">区域</label>
+          <select class="select-input" id="fmArea">
+            <option value="">请选择</option>
+            <option value="织造">织造</option>
+            <option value="染色">染色</option>
+            <option value="整理">整理</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label for="fmDate">时间</label>
+          <input type="datetime-local" class="text-input" id="fmDate" step="any">
+        </div>
+        <div class="form-field">
+          <label for="fmCustomer">客户</label>
+          <input type="text" class="text-input" id="fmCustomer" maxlength="200">
+        </div>
+        <div class="form-field">
+          <label for="fmLevel">投诉等级</label>
+          <select class="select-input" id="fmLevel">
+            <option value="">请选择</option>
+            <option value="A">A</option>
+            <option value="B">B</option>
+            <option value="C">C</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label for="fmProduct">带型</label>
+          <input type="text" class="text-input" id="fmProduct" maxlength="100">
+        </div>
+        <div class="form-field full">
+          <label for="fmSummary">投诉点</label>
+          <textarea class="text-input" id="fmSummary"></textarea>
+        </div>
+        <div class="form-field">
+          <label for="fmType">分类</label>
+          <select class="select-input" id="fmType">
+            <option value="">请选择</option>
+            <option value="织造不良">织造不良</option>
+            <option value="拉带不良">拉带不良</option>
+            <option value="染色不良">染色不良</option>
+            <option value="整理不良">整理不良</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label for="fmHandler">责任人</label>
+          <input type="text" class="text-input" id="fmHandler" maxlength="100">
+        </div>
+        <div class="form-field full">
+          <label for="fmPictures">投诉图片</label>
+          <textarea class="text-input" id="fmPictures" placeholder="图片磁盘路径，每行一个"></textarea>
+          <div class="image-actions">
+            <button type="button" class="btn btn-secondary btn-mini" id="btnAddImage" aria-controls="fmImageFiles">＋ 新增图片</button>
+            <input type="file" id="fmImageFiles" accept="image/jpeg,image/png,image/gif,image/webp" multiple hidden>
+          </div>
+          <div class="image-previews" id="imagePreviews" aria-label="投诉图片预览"></div>
+        </div>
+        <div class="form-field full">
+          <label for="fmRootCause">根本原因</label>
+          <textarea class="text-input" id="fmRootCause"></textarea>
+        </div>
+        <div class="form-field full">
+          <label for="fmAction">纠正措施</label>
+          <textarea class="text-input" id="fmAction"></textarea>
+        </div>
+        <div class="form-field">
+          <label for="fmCompletion">完成时间</label>
+          <input type="datetime-local" class="text-input" id="fmCompletion" step="any">
+        </div>
+        <div class="form-field">
+          <label for="fmStatus">状态</label>
+          <input type="text" class="text-input" id="fmStatus" list="statusOptions" maxlength="50">
+          <datalist id="statusOptions"></datalist>
+        </div>
+        <div class="form-field full">
+          <label for="fmDetail">备注</label>
+          <textarea class="text-input" id="fmDetail"></textarea>
+        </div>
+      </div>
+      <p class="form-status" id="formStatus" role="alert"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close="formModal">取消</button>
+      <button class="btn btn-primary" id="btnSave">💾 保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION: detail-modal -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">投诉详情</div>
+      <button class="modal-close" data-close="detailModal">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="detail-grid" id="detailGrid"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close="detailModal">关闭</button>
+      <button class="btn btn-primary" id="btnDetailEdit">✎ 编辑此单</button>
+    </div>
+  </div>
+</div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/complaint.js' %}?v=manual-query-paths-1"></script>
+{% endblock %}

@@ -33,6 +33,7 @@ urlpatterns = [
     path('dpmu/', include('apps.dpmu.urls')),
     path('copdata/', include('apps.copdata.urls')),
     path('dispatch/', include('apps.dispatch.urls')),
+    path('complaint/', include('apps.complaint.urls')),
     path('', include('apps.accounts.urls')),
 ]
 

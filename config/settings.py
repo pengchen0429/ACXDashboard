@@ -18,6 +18,7 @@ load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+COMPLAINT_IMAGE_ROOT = Path(os.getenv('COMPLAINT_IMAGE_ROOT', r'E:\ACXDashboardData\complaintdata'))
 
 L2L_BASE_URL = os.getenv("L2L_BASE_URL")
 L2L_AUTH = os.getenv("L2L_AUTH")
@@ -56,6 +57,7 @@ INSTALLED_APPS = [
     'apps.l2l',
     'apps.copdata',
     'apps.dispatch',
+    'apps.complaint',
 ]
 
 MIDDLEWARE = [
