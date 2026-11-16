@@ -57,6 +57,7 @@ WITH dispatches AS (
 		COALESCE(TRIM("areacode"), '') AS area,
 		COALESCE(TRIM("createdby"), '') AS submitter,
 		COALESCE(TRIM("dispatchtypecode"), '') AS dispatch_type,
+		COALESCE(TRIM("linecode"), '') AS line,
 		CASE
 			WHEN NULLIF(TRIM("closed"), '') IS NOT NULL THEN 'CLOSED'
 			WHEN NULLIF(TRIM("dispatched"), '') IS NOT NULL
@@ -70,10 +71,10 @@ WITH dispatches AS (
 		AND {ACTIVE_DISPATCH_TYPE_FILTER_SQL}
 )
 SELECT TO_CHAR(reported_at, 'YYYY-MM') AS "month", area AS "area",
-	submitter AS "submitter", dispatch_type AS "type", status AS "status", COUNT(*) AS "count"
+	submitter AS "submitter", dispatch_type AS "type", line AS "line", status AS "status", COUNT(*) AS "count"
 FROM dispatches
 WHERE reported_at >= %s AND reported_at < %s
-GROUP BY TO_CHAR(reported_at, 'YYYY-MM'), area, submitter, dispatch_type, status
+GROUP BY TO_CHAR(reported_at, 'YYYY-MM'), area, submitter, dispatch_type, line, status
 ''', [settings.SNOWFLAKE_DISPATCH_TIME_ZONE, *server_sites,
 		start.replace(tzinfo=None), end.replace(tzinfo=None)])
 
@@ -134,6 +135,7 @@ def get_dispatch_summary(start, end, *, site, areas=(), technicians=(), dispatch
 		months[month.strftime('%Y-%m')] = {'total': 0, 'closed': 0}
 		month = month.replace(year=month.year + 1, month=1) if month.month == 12 else month.replace(month=month.month + 1)
 	types = Counter()
+	lines = Counter()
 	area_counts = {}
 	for row in selected:
 		count = int(row['count'])
@@ -141,6 +143,7 @@ def get_dispatch_summary(start, end, *, site, areas=(), technicians=(), dispatch
 		months[row['month']]['total'] += count
 		months[row['month']]['closed'] += count if row['status'] == 'CLOSED' else 0
 		types[row['type'] or '未指定'] += count
+		lines[row['line'] or '未指定'] += count
 		area = area_counts.setdefault(row['area'] or '未指定', {'OPEN': 0, 'IN WORK': 0, 'CLOSED': 0})
 		area[row['status']] += count
 	total = sum(counts.values())
@@ -150,5 +153,6 @@ def get_dispatch_summary(start, end, *, site, areas=(), technicians=(), dispatch
 			'closed': counts['CLOSED'], 'rate': round(counts['CLOSED'] / total * 100, 1) if total else 0},
 		'trend': [{'month': month, **values} for month, values in months.items()],
 		'types': [{'name': name, 'value': count} for name, count in sorted(types.items())],
+		'lines': [{'name': name, 'value': count} for name, count in sorted(lines.items())],
 		'areas': [{'name': name, **values} for name, values in sorted(area_counts.items())],
 	}

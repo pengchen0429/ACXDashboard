@@ -50,6 +50,7 @@ class DispatchSnowflakeTests(SimpleTestCase):
 			('china^907371', 'invalid', 'Invalid', 'Invalid', 'Invalid', None, None, None, ''),
 			('china^928261', '2026-11-01T12:00:00', 'CNX', 'CNX', 'Safety', None, None, None, ''),
 		])
+		self.database.execute('ALTER TABLE dispatches ADD COLUMN linecode TEXT')
 		self.fetch = patch('apps.dispatch.services.fetch_all', side_effect=self.execute_query).start()
 		patch('common.snowflake.fetch_all', side_effect=self.execute_query).start()
 		self.addCleanup(patch.stopall)
@@ -83,6 +84,25 @@ class DispatchSnowflakeTests(SimpleTestCase):
 		self.assertEqual(data['options']['areas'], ['A', 'B'])
 		self.assertEqual(sum(row['value'] for row in data['types']), 5)
 		self.assertEqual(sum(row['OPEN'] + row['IN WORK'] + row['CLOSED'] for row in data['areas']), 5)
+
+	def test_line_distribution_uses_trimmed_codes_and_current_filters(self):
+		self.database.executemany('UPDATE dispatches SET linecode = ? WHERE rowid = ?', [
+			(' LINE01 ', 1), ('LINE02', 2), ('LINE01', 3), ('LINE02', 4), ('  ', 5),
+			('OUTSIDE', 6), ('DELETED', 8), ('LINE01', 10),
+		])
+		data = get_dispatch_summary(self.start, self.end, site=['ACX', 'CNX'])
+		self.assertEqual(data['lines'], [
+			{'name': 'LINE01', 'value': 3}, {'name': 'LINE02', 'value': 2},
+			{'name': '未指定', 'value': 1},
+		])
+		self.assertEqual(sum(row['value'] for row in data['lines']), data['stats']['total'])
+		filtered = get_dispatch_summary(self.start, self.end, site='ACX', areas=['A'],
+			technicians=['Alice'], dispatchtypes=['Safety'])
+		self.assertEqual(filtered['lines'], [
+			{'name': 'LINE01', 'value': 1}, {'name': 'LINE02', 'value': 1},
+		])
+		self.assertEqual(get_dispatch_summary(self.start, self.end, site='ACX',
+			technicians=['Nobody'])['lines'], [])
 
 	def test_filter_options_are_independent_of_summary_and_date_range(self):
 		options = get_dispatch_filter_options()
@@ -343,7 +363,9 @@ class DispatchPageTests(SimpleTestCase):
 		self.assertContains(response, 'Dispatch查询')
 		self.assertContains(response, '<a class="nav-item active" href="/dispatch/" data-page="dispatch" aria-current="page">')
 		self.assertContains(response, '<details class="nav-group" open>', count=2)
-		self.assertContains(response, '/static/js/dispatch.js?v=excel-details-1')
+		self.assertContains(response, '/static/js/dispatch.js?v=line-distribution-2')
+		self.assertContains(response, 'id="chartLine"')
+		self.assertNotContains(response, 'id="chartStatus"')
 		self.assertContains(response, '/static/css/dispatch.css?v=excel-export-1')
 		self.assertContains(response, 'class="btn btn-primary multi-select-confirm"', count=4)
 		self.assertContains(response, 'class="btn btn-secondary multi-select-reset"', count=4)

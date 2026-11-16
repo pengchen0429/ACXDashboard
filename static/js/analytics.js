@@ -3,12 +3,152 @@
 	var endInput = document.getElementById('analyticsEndDate');
 	var dateError = document.getElementById('analyticsDateError');
 	var queryButton = document.getElementById('analyticsQuery');
+	var resetButton = document.getElementById('analyticsReset');
+	var filterStatus = document.getElementById('analyticsFilterStatus');
 	var pageElement = document.querySelector('.analytics-page');
 	var colors = ['#5b8ff9', '#5ad8a6', '#f6bd16', '#e86452', '#6dc8ec', '#945fb9', '#ff9845', '#1e9493', '#ff99c3', '#7262fd'];
 	var charts = {};
 	var statuses = {};
 	var activeRequest;
+	var optionsRequest;
+	var optionsLoading = false;
+	var statisticsLoading = false;
+	var optionsError = '';
 	var params = new URLSearchParams(window.location.search);
+	var filterInputs = {
+		product_name: document.getElementById('analyticsProductName'),
+		machine: document.getElementById('analyticsMachine'),
+		defect: document.getElementById('analyticsDefect')
+	};
+	var filterWidgets = {};
+	Object.keys(filterInputs).forEach(function(name) {
+		Array.from(new Set(params.getAll(name))).filter(Boolean).forEach(function(value) {
+			filterInputs[name].add(new Option(value, value, true, true));
+		});
+		filterWidgets[name] = initMultiSelect(filterInputs[name]);
+	});
+	document.addEventListener('click', function(event) {
+		if (!event.target.closest('.quality-select')) closeFilters(false);
+	});
+	document.addEventListener('keydown', function(event) {
+		if (event.key === 'Escape') closeFilters(true);
+	});
+	function selectedValues(input) {
+		return Array.from(input.selectedOptions).map(function(option) {return option.value;});
+	}
+	function closeFilters(restoreFocus) {
+		Object.keys(filterWidgets).forEach(function(name) {filterWidgets[name].close(restoreFocus);});
+	}
+	function initMultiSelect(input) {
+		var label = input.getAttribute('aria-label');
+		var root = document.createElement('div');
+		root.className = 'quality-select';
+		var trigger = document.createElement('button');
+		trigger.type = 'button';
+		trigger.className = 'quality-select-trigger';
+		trigger.setAttribute('aria-expanded', 'false');
+		var panel = document.createElement('div');
+		panel.id = input.id + 'Options';
+		panel.className = 'quality-select-panel';
+		panel.hidden = true;
+		trigger.setAttribute('aria-controls', panel.id);
+		var search = document.createElement('input');
+		search.type = 'search';
+		search.className = 'quality-select-search';
+		search.placeholder = '搜索';
+		search.setAttribute('aria-label', '搜索' + label);
+		var list = document.createElement('div');
+		list.className = 'quality-select-options';
+		var actions = document.createElement('div');
+		actions.className = 'quality-select-actions';
+		var count = document.createElement('span');
+		count.setAttribute('aria-live', 'polite');
+		var selectAll = document.createElement('button');
+		selectAll.type = 'button';
+		selectAll.textContent = '全选';
+		var reset = document.createElement('button');
+		reset.type = 'button';
+		reset.textContent = '清空';
+		var confirm = document.createElement('button');
+		confirm.type = 'button';
+		confirm.textContent = '确定';
+		actions.append(count, selectAll, reset, confirm);
+		panel.append(search, list, actions);
+		root.append(trigger, panel);
+		input.after(root);
+		var draft = [];
+		function renderOptions() {
+			list.replaceChildren();
+			Array.from(input.options).forEach(function(option) {
+				if (!option.value.toLowerCase().includes(search.value.toLowerCase())) return;
+				var row = document.createElement('label');
+				var checkbox = document.createElement('input');
+				checkbox.type = 'checkbox';
+				checkbox.value = option.value;
+				checkbox.checked = draft.includes(option.value);
+				var text = document.createElement('span');
+				text.textContent = option.value;
+				row.append(checkbox, text);
+				list.append(row);
+			});
+			if (!list.children.length) list.textContent = optionsLoading ? '正在加载选项' : (optionsError || '无可选项');
+			count.textContent = '已选 ' + draft.length + ' 项';
+		}
+		function refresh() {
+			var values = selectedValues(input);
+			trigger.textContent = values.length ? (values.length === 1 ? values[0] : '已选 ' + values.length + ' 项') : '全部';
+			trigger.title = values.length ? values.join('\n') : '全部';
+			trigger.setAttribute('aria-label', label + '：' + (values.length ? values.join('、') : '全部'));
+			if (!panel.hidden) renderOptions();
+		}
+		function close(restoreFocus) {
+			var wasOpen = !panel.hidden;
+			panel.hidden = true;
+			trigger.setAttribute('aria-expanded', 'false');
+			if (wasOpen && restoreFocus) trigger.focus();
+		}
+		trigger.addEventListener('click', function() {
+			var wasOpen = !panel.hidden;
+			closeFilters(false);
+			if (wasOpen) return;
+			draft = selectedValues(input);
+			search.value = '';
+			renderOptions();
+			panel.hidden = false;
+			trigger.setAttribute('aria-expanded', 'true');
+			search.focus();
+			if (optionsError) loadFilterOptions();
+		});
+		search.addEventListener('input', renderOptions);
+		list.addEventListener('change', function(event) {
+			var checkbox = event.target;
+			if (checkbox.type !== 'checkbox') return;
+			draft = draft.filter(function(value) {return value !== checkbox.value;});
+			if (checkbox.checked) draft.push(checkbox.value);
+			count.textContent = '已选 ' + draft.length + ' 项';
+		});
+		selectAll.addEventListener('click', function() {
+			var matchingValues = Array.from(input.options).filter(function(option) {
+				return option.value.toLowerCase().includes(search.value.toLowerCase());
+			}).map(function(option) {return option.value;});
+			draft = Array.from(new Set(draft.concat(matchingValues)));
+			renderOptions();
+		});
+		reset.addEventListener('click', function() {draft = []; renderOptions();});
+		confirm.addEventListener('click', function() {
+			Array.from(input.options).forEach(function(option) {option.selected = draft.includes(option.value);});
+			close(true);
+			refresh();
+			input.dispatchEvent(new Event('change'));
+		});
+		refresh();
+		return {refresh: refresh, close: close, setBusy: function(busy) {
+			trigger.disabled = busy;
+			selectAll.disabled = busy;
+			confirm.disabled = busy;
+			root.setAttribute('aria-busy', String(busy));
+		}};
+	}
 	var now = new Date();
 	var defaultEnd = new Date(now);
 	defaultEnd.setHours(8, 30, 0, 0);
@@ -133,8 +273,69 @@
 	function setStatus(message) {
 		Object.keys(statuses).forEach(function(id) {statuses[id].textContent = message; statuses[id].hidden = !message;});
 	}
+	function updateFilterOptions(options, query) {
+		var changed = false;
+		Object.keys(filterInputs).forEach(function(name) {
+			var input = filterInputs[name];
+			var values = (options[name] || []).slice();
+			var selected = query.getAll(name).filter(function(value) {return values.includes(value);});
+			if (selected.length !== query.getAll(name).length) changed = true;
+			input.replaceChildren();
+			values.forEach(function(value) {input.add(new Option(value, value, false, selected.includes(value)));});
+			filterWidgets[name].refresh();
+		});
+		return changed;
+	}
+	function currentQuery() {
+		var query = new URLSearchParams({start_date: startInput.value, end_date: endInput.value});
+		Object.keys(filterInputs).forEach(function(name) {
+			selectedValues(filterInputs[name]).forEach(function(value) {query.append(name, value);});
+		});
+		return query;
+	}
+	function updateQueryButton() {
+		queryButton.disabled = optionsLoading || statisticsLoading;
+	}
+	async function loadFilterOptions() {
+		if (optionsRequest) optionsRequest.abort();
+		closeFilters(false);
+		optionsError = '';
+		filterStatus.hidden = true;
+		if (!validateRange()) {
+			optionsLoading = false;
+			Object.keys(filterWidgets).forEach(function(name) {filterWidgets[name].setBusy(false);});
+			updateQueryButton();
+			return;
+		}
+		var controller = new AbortController();
+		optionsRequest = controller;
+		var query = currentQuery();
+		query.set('options_only', '1');
+		optionsLoading = true;
+		Object.keys(filterWidgets).forEach(function(name) {filterWidgets[name].setBusy(true);});
+		updateQueryButton();
+		try {
+			var response = await fetch(pageElement.dataset.statisticsUrl + '?' + query.toString(), {signal: controller.signal, headers: {Accept: 'application/json'}});
+			if (!response.ok) throw new Error('筛选项加载失败，请重新打开下拉框重试');
+			var result = await response.json();
+			if (controller.signal.aborted) return;
+			if (updateFilterOptions(result.filter_options || {}, query)) await loadFilterOptions();
+		} catch (error) {
+			if (controller.signal.aborted) return;
+			optionsError = error.message || '筛选项加载失败，请重新打开下拉框重试';
+			filterStatus.textContent = optionsError;
+			filterStatus.hidden = false;
+		} finally {
+			if (optionsRequest === controller && !controller.signal.aborted) {
+				optionsLoading = false;
+				Object.keys(filterWidgets).forEach(function(name) {filterWidgets[name].setBusy(false);});
+				updateQueryButton();
+			}
+		}
+	}
 	function setBusy(busy) {
-		queryButton.disabled = busy;
+		statisticsLoading = busy;
+		updateQueryButton();
 		Object.keys(charts).forEach(function(id) {
 			document.getElementById(id).setAttribute('aria-busy', String(busy));
 			if (busy) charts[id].showLoading('default', {text: '加载中', color: colors[0], textColor: '#c8d6e5', maskColor: 'rgba(26,42,58,0.85)'});
@@ -151,7 +352,7 @@
 		}
 		var controller = new AbortController();
 		activeRequest = controller;
-		var query = new URLSearchParams({start_date: startInput.value, end_date: endInput.value});
+		var query = currentQuery();
 		setStatus('');
 		setBusy(true);
 		try {
@@ -160,10 +361,14 @@
 			var result = await response.json();
 			if (controller.signal.aborted) return;
 			render(result);
-			setStatus(Number(result.total) ? '' : '所选时间范围暂无报废数量');
+			setStatus(Number(result.total) ? '' : '所选条件暂无报废数量');
 			var url = new URL(window.location.href);
 			url.searchParams.set('start_date', query.get('start_date'));
 			url.searchParams.set('end_date', query.get('end_date'));
+			Object.keys(filterInputs).forEach(function(name) {
+				url.searchParams.delete(name);
+				query.getAll(name).forEach(function(value) {url.searchParams.append(name, value);});
+			});
 			window.history.replaceState(null, '', url);
 		} catch (error) {
 			if (controller.signal.aborted) return;
@@ -173,12 +378,22 @@
 			if (activeRequest === controller && !controller.signal.aborted) setBusy(false);
 		}
 	}
-	startInput.addEventListener('change', loadStatistics);
-	endInput.addEventListener('change', loadStatistics);
+	startInput.addEventListener('change', loadFilterOptions);
+	endInput.addEventListener('change', loadFilterOptions);
 	queryButton.addEventListener('click', loadStatistics);
+	resetButton.addEventListener('click', function() {
+		closeFilters(false);
+		Object.keys(filterInputs).forEach(function(name) {
+			Array.from(filterInputs[name].options).forEach(function(option) {option.selected = false;});
+			filterWidgets[name].refresh();
+		});
+		loadFilterOptions();
+	});
+	Object.keys(filterInputs).forEach(function(name) {filterInputs[name].addEventListener('change', loadFilterOptions);});
 	var observer = new ResizeObserver(function(entries) {
 		entries.forEach(function(entry) {charts[entry.target.id].resize();});
 	});
 	document.querySelectorAll('.analytics-page [data-chart]').forEach(function(element) {observer.observe(element);});
+	loadFilterOptions();
 	loadStatistics();
 })();

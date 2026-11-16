@@ -353,18 +353,16 @@ function renderCharts() {
     ]
   }, true);
 
-  /* 状态分布 */
-  var stats = summary ? summary.stats : {open: 0, inwork: 0, closed: 0};
-  initChart('chartStatus').setOption({
+  var lineRows = summary ? summary.lines.slice().sort(function(first, second) {
+    return second.value - first.value || first.name.localeCompare(second.name, 'zh-CN');
+  }) : [];
+  initChart('chartLine').setOption({
     tooltip: Object.assign({ formatter: function(p) { return p.name + ': ' + p.value + ' 单 (' + p.percent.toFixed(1) + '%)'; } }, tooltipStyle()),
-    legend: { bottom: 0, left: 'center', itemWidth: 10, itemHeight: 8, itemGap: 6, textStyle: { color: '#6b7b8d', fontSize: 10 } },
+    legend: { type: 'scroll', bottom: 0, left: 'center', itemWidth: 10, itemHeight: 8, itemGap: 6, pageIconSize: 10,
+      textStyle: { color: '#6b7b8d', fontSize: 10, width: 90, overflow: 'truncate' } },
     series: [{ type: 'pie', stillShowZeroSum: false, radius: ['40%', '65%'], center: ['50%', '44%'], avoidLabelOverlap: true,
       label: { show: false }, labelLine: { show: false },
-      data: [
-        { value: stats.open, name: 'OPEN', itemStyle: { color: '#ff4d4f' } },
-        { value: stats.inwork, name: 'IN WORK', itemStyle: { color: '#ffaa00' } },
-        { value: stats.closed, name: 'CLOSED', itemStyle: { color: '#00ffa3' } }
-      ]
+      data: lineRows
     }]
   }, true);
 
