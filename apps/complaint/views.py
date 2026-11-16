@@ -15,7 +15,7 @@ from django import forms
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.files.storage import FileSystemStorage
-from django.db import DatabaseError
+from django.db import DatabaseError, IntegrityError, transaction
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
@@ -46,6 +46,7 @@ def complaint_image_storage():
 
 
 class ComplaintForm(forms.ModelForm):
+	no = forms.IntegerField(label='编号', min_value=1, max_value=9223372036854775807, error_messages={'required': '请输入编号', 'invalid': '编号必须是整数'})
 	area = forms.ChoiceField(label='区域', required=False, choices=[('', '请选择')] + [(value, value) for value in ('织造', '染色', '整理')])
 	complaint_type = forms.ChoiceField(label='投诉等级', required=False, choices=[('', '请选择')] + [(value, value) for value in ('A', 'B', 'C')])
 	classification = forms.ChoiceField(label='分类', required=False, choices=[('', '请选择')] + [(value, value) for value in ('织造不良', '拉带不良', '染色不良', '整理不良')])
@@ -76,10 +77,24 @@ def save_complaint(request, instance=None):
 		return JsonResponse({'error': '请求数据不是有效的 JSON'}, status=400)
 	if not isinstance(data, dict):
 		return JsonResponse({'error': '请求数据必须是对象'}, status=400)
+	if instance is not None and 'no' not in data:
+		data['no'] = instance.no
 	form = ComplaintForm(data=data, instance=instance)
 	if not form.is_valid():
 		return JsonResponse({'error': '请检查填写内容', 'fields': form.errors.get_json_data()}, status=400)
-	record = form.save()
+	if instance is not None and form.cleaned_data['no'] != instance.no:
+		form.add_error('no', '已保存记录的编号不可修改')
+	elif instance is None and ComplaintList.objects.filter(pk=form.cleaned_data['no']).exists():
+		form.add_error('no', '编号已存在，请使用其他编号')
+	if form.errors:
+		return JsonResponse({'error': '请检查填写内容', 'fields': form.errors.get_json_data()}, status=400)
+	record = form.save(commit=False)
+	record.no = form.cleaned_data['no']
+	try:
+		with transaction.atomic():
+			record.save(force_insert=instance is None)
+	except IntegrityError:
+		return JsonResponse({'error': '编号重复或记录不符合数据库约束，请检查编号后重试'}, status=400)
 	return JsonResponse({'record': serialize_complaint(record)}, status=200 if instance else 201)
 
 
@@ -143,7 +158,7 @@ def complaint_images(request):
 				warnings.simplefilter('error', Image.DecompressionBombWarning)
 				with Image.open(upload) as image:
 					if image.format not in IMAGE_FORMATS:
-						return JsonResponse({'error': '仅支持 JPG、PNG、GIF、WebP 图片'}, status=400)
+						return JsonResponse({'error': '文件“' + upload.name + '”的实际格式为 ' + str(image.format) + '，不是 JPG、PNG、GIF、WebP；仅修改扩展名无效'}, status=400)
 					if image.width * image.height > MAX_IMAGE_PIXELS:
 						return JsonResponse({'error': '图片不能超过 2000 万像素'}, status=400)
 					extension = IMAGE_FORMATS[image.format][0]
@@ -165,7 +180,7 @@ def complaint_images(request):
 				storage.delete(name)
 			except OSError:
 				logger.exception('Complaint image cleanup failed')
-		return JsonResponse({'error': '图片保存失败，请稍后重试'}, status=503)
+		return JsonResponse({'error': '图片格式校验已通过，但无法写入图片保存目录，请确认服务器目标磁盘存在且服务账号有写入权限'}, status=503)
 	return JsonResponse({'images': [{'path': storage.path(name), 'url': reverse('complaint-image', args=[name])} for name in saved]}, status=201)
 
 

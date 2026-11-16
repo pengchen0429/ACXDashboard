@@ -121,7 +121,7 @@
       <div class="form-grid">
         <div class="form-field">
           <label for="fmId">编号</label>
-          <input type="text" class="text-input" id="fmId" readonly style="color:var(--text-muted);">
+          <input type="text" class="text-input" id="fmId" inputmode="numeric" pattern="[1-9][0-9]*" maxlength="19" required autocomplete="off">
         </div>
         <div class="form-field">
           <label for="fmArea">区域</label>
@@ -172,8 +172,8 @@
           <input type="text" class="text-input" id="fmHandler" maxlength="100">
         </div>
         <div class="form-field full">
-          <label for="fmPictures">投诉图片</label>
-          <textarea class="text-input" id="fmPictures" placeholder="图片磁盘路径，每行一个"></textarea>
+          <label for="fmImageFiles">投诉图片</label>
+          <input type="hidden" id="fmPictures">
           <div class="image-actions">
             <button type="button" class="btn btn-secondary btn-mini" id="btnAddImage" aria-controls="fmImageFiles">＋ 新增图片</button>
             <input type="file" id="fmImageFiles" accept=".jpg,.jpeg,.png,.gif,.webp,image/jpeg,image/png,image/gif,image/webp" multiple hidden>
@@ -194,8 +194,13 @@
         </div>
         <div class="form-field">
           <label for="fmStatus">状态</label>
-          <input type="text" class="text-input" id="fmStatus" list="statusOptions" maxlength="50">
-          <datalist id="statusOptions"></datalist>
+          <select class="select-input" id="fmStatus">
+            <option value="">未填写</option>
+            <option value="待处理">待处理</option>
+            <option value="处理中">处理中</option>
+            <option value="已解决">已解决</option>
+            <option value="已关闭">已关闭</option>
+          </select>
         </div>
         <div class="form-field full">
           <label for="fmDetail">备注</label>
@@ -231,5 +236,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/complaint.js' %}?v=csv-images-1"></script>
+<script src="{% static 'js/complaint.js' %}?v=edit-status-tomorrow-5"></script>
 {% endblock %}

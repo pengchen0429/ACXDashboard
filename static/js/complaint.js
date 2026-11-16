@@ -103,11 +103,16 @@ function refreshFilterOptions() {
   TYPES = Array.from(new Set(TYPE_OPTIONS.concat(allData.map(function(record) { return record.type; }))));
   LEVELS = Array.from(new Set(LEVEL_OPTIONS.concat(allData.map(function(record) { return record.level; }))));
   STATUSES = Array.from(new Set(['待处理', '处理中', '已解决', '已关闭'].concat(allData.map(function(record) { return record.status; }))));
-  [['statusOptions', STATUSES]].forEach(function(pair) {
-    document.getElementById(pair[0]).innerHTML = pair[1].filter(function(value) { return value !== '未填写'; }).map(function(value) {
-      return '<option value="' + esc(value) + '"></option>';
-    }).join('');
+  var statusInput = document.getElementById('fmStatus');
+  var selectedStatus = statusInput.value;
+  statusInput.replaceChildren();
+  [''].concat(STATUSES.filter(function(value) { return value !== '未填写'; })).forEach(function(value) {
+    var option = document.createElement('option');
+    option.value = value;
+    option.textContent = value || '未填写';
+    statusInput.appendChild(option);
   });
+  statusInput.value = selectedStatus;
   [typeFilter, levelFilter, statusFilter].forEach(function(filter) { filter.render(); });
 }
 
@@ -211,11 +216,14 @@ var pageSize = 10;
 var appliedFilters = { from: '', to: '', types: [], levels: [], statuses: [] };
 
 function resetDateRange() {
-  var today = new Intl.DateTimeFormat('sv-SE', {
+  var dateFormatter = new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit'
-  }).format(new Date());
+  });
+  var now = new Date();
+  var today = dateFormatter.format(now);
+  var tomorrow = dateFormatter.format(new Date(now.getTime() + 24 * 60 * 60 * 1000));
   document.getElementById('fDateFrom').value = today.slice(0, 4) + '-01-01T08:30';
-  document.getElementById('fDateTo').value = today + 'T08:30';
+  document.getElementById('fDateTo').value = tomorrow + 'T08:30';
 }
 
 function applyFilters() {
@@ -446,7 +454,7 @@ function renderImagePreviews() {
   container.replaceChildren();
   var saved = document.getElementById('fmPictures').value.split(/\r?\n/).map(function(reference) { return reference.trim(); }).filter(Boolean).map(function(reference) {
     var url = pictureUrl(reference);
-    return url ? { url: url, name: '已保存图片' } : null;
+    return url ? { url: url, name: '已保存图片', reference: reference } : null;
   }).filter(Boolean);
   saved.concat(pendingImages).forEach(function(item) {
     var figure = document.createElement('figure');
@@ -459,17 +467,22 @@ function renderImagePreviews() {
     var caption = document.createElement('figcaption');
     caption.textContent = item.name;
     figure.appendChild(caption);
-    if (item.file) {
+    {
       var remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'image-remove';
       remove.textContent = '×';
-      remove.title = '移除图片';
-      remove.setAttribute('aria-label', '移除图片 ' + item.name);
+      remove.title = item.file ? '移除待上传图片' : '删除已保存图片（保存后生效）';
+      remove.setAttribute('aria-label', '删除图片 ' + item.name);
       remove.addEventListener('click', function() {
         if (busy) return;
-        URL.revokeObjectURL(item.url);
-        pendingImages = pendingImages.filter(function(image) { return image !== item; });
+        if (item.file) {
+          URL.revokeObjectURL(item.url);
+          pendingImages = pendingImages.filter(function(image) { return image !== item; });
+        } else {
+          var input = document.getElementById('fmPictures');
+          input.value = input.value.split(/\r?\n/).filter(function(reference) { return reference.trim() !== item.reference; }).join('\n');
+        }
         renderImagePreviews();
       });
       figure.appendChild(remove);
@@ -487,8 +500,9 @@ document.getElementById('fmImageFiles').addEventListener('change', function(even
   var status = document.getElementById('formStatus');
   status.textContent = '';
   if (pendingImages.length + files.length > 10) { status.textContent = '一次最多添加 10 张新图片'; return; }
-  if (files.some(function(file) { return !/\.(jpe?g|png|gif|webp)$/i.test(file.name); })) {
-    status.textContent = '仅支持 JPG、PNG、GIF、WebP 图片'; return;
+  var unsupportedFile = files.find(function(file) { return !/\.(jpe?g|png|gif|webp)$/i.test(file.name.trim()); });
+  if (unsupportedFile) {
+    status.textContent = '文件“' + unsupportedFile.name + '”扩展名不支持，请选择 JPG、JPEG、PNG、GIF、WebP 图片'; return;
   }
   if (files.some(function(file) { return file.size > 10 * 1024 * 1024; })) { status.textContent = '每张图片不能超过 10MB'; return; }
   files.forEach(function(file) { pendingImages.push({ file: file, url: URL.createObjectURL(file), name: file.name }); });
@@ -503,7 +517,6 @@ function openForm(record) {
   document.getElementById('formTitle').textContent = record ? '编辑投诉 · ' + record.id : '新增投诉';
   COLUMNS.forEach(function(column) {
     var value = record ? record[column[0]] : '';
-    if (column[0] === 'no' && !record) value = '(保存后自动生成)';
     if (column[0] === 'state' && !record) value = '待处理';
     var input = document.getElementById(column[2]);
     if (column[0] === 'reported_at' || column[0] === 'completion_time') {
@@ -515,6 +528,7 @@ function openForm(record) {
       if (input.tagName === 'SELECT') input.dataset.legacyValue = value && input.value !== value ? value : '';
     }
   });
+  document.getElementById('fmId').readOnly = !!record;
   renderImagePreviews();
   setBusy(false);
   openModal('formModal');
@@ -532,6 +546,13 @@ document.getElementById('btnSave').addEventListener('click', async function() {
   });
   if (invalidChoice) { formStatus.textContent = invalidChoice[1] + '原值不在可选范围内，请重新选择'; return; }
   var payload = {};
+  var manualId = document.getElementById('fmId').value.trim();
+  if (!/^[1-9]\d{0,18}$/.test(manualId) || (manualId.length === 19 && manualId > '9223372036854775807')) {
+    formStatus.textContent = '请输入有效的正整数编号（不超过 9223372036854775807）';
+    document.getElementById('fmId').focus();
+    return;
+  }
+  payload.no = manualId;
   COLUMNS.slice(1).forEach(function(column) {
     var input = document.getElementById(column[2]);
     var value = input.value;
@@ -545,7 +566,10 @@ document.getElementById('btnSave').addEventListener('click', async function() {
     if (pendingImages.length) {
       formStatus.textContent = '正在上传图片…';
       var formData = new FormData();
-      pendingImages.forEach(function(image) { formData.append('images', image.file); });
+      pendingImages.forEach(function(image, index) {
+        var extension = image.file.name.trim().match(/\.(jpe?g|png|gif|webp)$/i)[1].toLowerCase();
+        formData.append('images', image.file, 'complaint-' + (index + 1) + '.' + extension);
+      });
       var upload = await requestData(pageRoot.dataset.imagesUrl, { method: 'POST', body: formData });
       if (!Array.isArray(upload.images) || upload.images.length !== pendingImages.length || upload.images.some(function(image) { return typeof image.path !== 'string' || !image.path; })) throw new Error('图片上传结果不完整，请重试');
       payload.defect_pictures = [payload.defect_pictures].concat(upload.images.map(function(image) { return image.path; })).filter(Boolean).join('\n');

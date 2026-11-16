@@ -76,6 +76,26 @@ class ComplaintApiTests(TestCase):
 		self.assertIsNone(data['completion_time'])
 		self.assertEqual(data['remark'], '<script>test</script>')
 
+	def test_edit_removes_saved_images_and_updates_status(self):
+		self.login_writer()
+		with TemporaryDirectory() as directory, self.settings(COMPLAINT_IMAGE_ROOT=directory):
+			upload = self.client.post(reverse('complaint-images'), {'images': [self.image_upload(), self.image_upload()]})
+			self.assertEqual(upload.status_code, 201)
+			paths = [image['path'] for image in upload.json()['images']]
+			payload = {'no': '123', 'state': '待处理', 'defect_pictures': '\n'.join(paths)}
+			self.assertEqual(self.client.post(reverse('complaint-records'), json.dumps(payload), content_type='application/json').status_code, 201)
+			url = reverse('complaint-record', args=[123])
+			for state, remaining in (('处理中', paths[1:]), ('已解决', []), ('已关闭', [])):
+				with self.subTest(state=state):
+					payload.update(state=state, defect_pictures='\n'.join(remaining))
+					response = self.client.put(url, json.dumps(payload), content_type='application/json')
+					self.assertEqual(response.status_code, 200)
+					saved = self.client.get(url).json()['record']
+					self.assertEqual(saved['state'], state)
+					self.assertEqual(saved['defect_pictures'], '\n'.join(remaining))
+					self.assertEqual(ComplaintList.objects.get(pk=123).defect_pictures, '\n'.join(remaining))
+			self.assertTrue(all(Path(path).is_file() for path in paths))
+
 	def test_anonymous_mutations_are_rejected(self):
 		record = ComplaintList.objects.create(customer='保留记录')
 		self.client.logout()
@@ -88,7 +108,7 @@ class ComplaintApiTests(TestCase):
 
 	def test_authorized_create_update_detail_delete(self):
 		self.login_writer()
-		payload = {'area': '染色', 'date': '2026-11-16T08:30:00+08:00', 'customer': '数据库客户',
+		payload = {'no': '123', 'area': '染色', 'date': '2026-11-16T08:30:00+08:00', 'customer': '数据库客户',
 			'complaint_type': 'A', 'webbing_type': 'W-100', 'complaint': '投诉点',
 			'classification': '染色不良', 'defect_pictures': '/media/complaints/test.jpg',
 			'root_cause': '根本原因', 'corrective_action': '纠正措施', 'res': '测试责任人',
@@ -106,7 +126,7 @@ class ComplaintApiTests(TestCase):
 
 	def test_permission_is_checked_per_operation(self):
 		self.login_writer(['add_complaintlist'])
-		response = self.client.post(reverse('complaint-records'), '{}', content_type='application/json')
+		response = self.client.post(reverse('complaint-records'), '{"no":"123"}', content_type='application/json')
 		self.assertEqual(response.status_code, 201)
 		url = reverse('complaint-record', args=[response.json()['record']['no']])
 		self.assertEqual(self.client.put(url, '{}', content_type='application/json').status_code, 403)
@@ -114,12 +134,33 @@ class ComplaintApiTests(TestCase):
 
 	def test_invalid_payloads_do_not_create_records(self):
 		self.login_writer()
-		for payload in ('{', '[]', json.dumps({'date': 'not-a-date'}), json.dumps({'customer': 'x' * 201}),
-						json.dumps({'area': '其他'}), json.dumps({'complaint_type': '严重'}), json.dumps({'classification': '其他'})):
+		for payload in ('{', '[]', json.dumps({'no': '123', 'date': 'not-a-date'}), json.dumps({'no': '123', 'customer': 'x' * 201}),
+						json.dumps({'no': '123', 'area': '其他'}), json.dumps({'no': '123', 'complaint_type': '严重'}), json.dumps({'no': '123', 'classification': '其他'})):
 			with self.subTest(payload=payload):
 				response = self.client.post(reverse('complaint-records'), payload, content_type='application/json')
 				self.assertEqual(response.status_code, 400)
 		self.assertFalse(ComplaintList.objects.exists())
+
+	def test_manual_identifier_required_unique_and_preserved(self):
+		self.login_writer()
+		url = reverse('complaint-records')
+		for value in ('', 'ABC', '0', '-1', '9223372036854775808'):
+			response = self.client.post(url, json.dumps({'no': value}), content_type='application/json')
+			self.assertEqual(response.status_code, 400)
+			self.assertIn('no', response.json()['fields'])
+		self.assertEqual(self.client.post(url, '{}', content_type='application/json').status_code, 400)
+		payload = {'no': '9007199254740993', 'customer': '保留原记录'}
+		response = self.client.post(url, json.dumps(payload), content_type='application/json')
+		self.assertEqual(response.status_code, 201)
+		self.assertEqual(response.json()['record']['no'], payload['no'])
+		payload['customer'] = '不得覆盖'
+		response = self.client.post(url, json.dumps(payload), content_type='application/json')
+		self.assertEqual(response.status_code, 400)
+		self.assertIn('no', response.json()['fields'])
+		self.assertEqual(ComplaintList.objects.get().customer, '保留原记录')
+		record_url = reverse('complaint-record', args=[payload['no']])
+		self.assertEqual(self.client.put(record_url, '{"no":"456"}', content_type='application/json').status_code, 400)
+		self.assertEqual(ComplaintList.objects.count(), 1)
 
 	def test_csrf_is_required_for_writes(self):
 		self.client = Client(enforce_csrf_checks=True)
@@ -128,7 +169,7 @@ class ComplaintApiTests(TestCase):
 		self.assertEqual(self.client.post(url, '{}', content_type='application/json').status_code, 403)
 		page = self.client.get(reverse('complaint'))
 		token = page.cookies['csrftoken'].value
-		self.assertEqual(self.client.post(url, '{}', content_type='application/json', HTTP_X_CSRFTOKEN=token).status_code, 201)
+		self.assertEqual(self.client.post(url, '{"no":"123"}', content_type='application/json', HTTP_X_CSRFTOKEN=token).status_code, 201)
 
 	def test_database_failure_does_not_return_demo_data_or_sql_details(self):
 		with patch('apps.complaint.views.ComplaintList.objects.order_by', side_effect=DatabaseError('private database details')):
@@ -154,7 +195,7 @@ class ComplaintApiTests(TestCase):
 			for path in paths:
 				self.assertEqual(Path(path).parent, Path(directory))
 				self.assertTrue(Path(path).is_file())
-			response = self.client.post(reverse('complaint-records'), json.dumps({'defect_pictures': '\n'.join(paths)}), content_type='application/json')
+			response = self.client.post(reverse('complaint-records'), json.dumps({'no': '123', 'defect_pictures': '\n'.join(paths)}), content_type='application/json')
 			self.assertEqual(response.status_code, 201)
 			self.assertEqual(ComplaintList.objects.get().defect_pictures, '\n'.join(paths))
 			self.client.force_login(self.reader)
@@ -172,7 +213,7 @@ class ComplaintApiTests(TestCase):
 		with TemporaryDirectory() as directory, self.settings(COMPLAINT_IMAGE_ROOT=directory):
 			buffer = BytesIO()
 			Image.new('RGB', (2, 2), 'red').save(buffer, format='JPEG')
-			for filename, content_type in (('photo.jpg', 'image/jpg'), ('photo.JPG', 'application/octet-stream'), ('photo.JpEg', 'image/pjpeg')):
+			for filename, content_type in (('photo.jpg', 'image/jpg'), ('photo.JPG', 'application/octet-stream'), ('photo.JpEg', 'image/pjpeg'), ('客户投诉现场.jpg', 'image/jpeg'), ('质量照片.JPG', 'image/jpg')):
 				with self.subTest(filename=filename, content_type=content_type):
 					upload = SimpleUploadedFile(filename, buffer.getvalue(), content_type=content_type)
 					response = self.client.post(reverse('complaint-images'), {'images': upload})
@@ -181,7 +222,10 @@ class ComplaintApiTests(TestCase):
 			buffer = BytesIO()
 			Image.new('RGB', (2, 2), 'red').save(buffer, format='BMP')
 			upload = SimpleUploadedFile('fake.jpg', buffer.getvalue(), content_type='image/jpeg')
-			self.assertEqual(self.client.post(reverse('complaint-images'), {'images': upload}).status_code, 400)
+			response = self.client.post(reverse('complaint-images'), {'images': upload})
+			self.assertEqual(response.status_code, 400)
+			self.assertIn('BMP', response.json()['error'])
+			self.assertIn('fake.jpg', response.json()['error'])
 
 	def test_image_validation_prevents_partial_uploads(self):
 		self.login_writer()
@@ -204,6 +248,8 @@ class ComplaintApiTests(TestCase):
 				response = self.client.post(reverse('complaint-images'), {'images': self.image_upload()})
 		self.assertEqual(response.status_code, 503)
 		self.assertNotIn('private storage details', response.content.decode())
+		self.assertIn('格式校验已通过', response.json()['error'])
+		self.assertIn('写入权限', response.json()['error'])
 
 	def test_image_permissions_and_csrf(self):
 		url = reverse('complaint-images')
@@ -328,6 +374,13 @@ class ComplaintTemplateTests(SimpleTestCase):
 		self.assertIn('id="btnAddImage"', html)
 		self.assertIn('type="file" id="fmImageFiles"', html)
 		self.assertIn('id="imagePreviews"', html)
+		self.assertIn('<input type="hidden" id="fmPictures">', html)
+		self.assertNotIn('<textarea class="text-input" id="fmPictures"', html)
+		self.assertIn('id="fmId" inputmode="numeric"', html)
+		self.assertNotIn('id="fmId" readonly', html)
+		status_options = '<option value="">未填写</option>' + ''.join('<option value="' + value + '">' + value + '</option>' for value in ('待处理', '处理中', '已解决', '已关闭'))
+		self.assertInHTML('<select class="select-input" id="fmStatus">' + status_options + '</select>', html)
+		self.assertNotIn('<datalist id="statusOptions">', html)
 
 	def test_database_columns_and_actions_are_preserved(self):
 		html = render_to_string('complaint/complaint.html')
