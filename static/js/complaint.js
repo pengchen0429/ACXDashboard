@@ -19,6 +19,7 @@ var pageRoot = document.querySelector('.complaint-page');
 var allData = [];
 var permissions = { add: pageRoot.dataset.canAdd === 'true', change: pageRoot.dataset.canChange === 'true', delete: pageRoot.dataset.canDelete === 'true' };
 var busy = false;
+var exporting = false;
 var pendingImages = [];
 var hasLoadedData = false;
 var COLUMNS = [
@@ -82,7 +83,7 @@ function setBusy(value) {
   document.getElementById('btnReset').disabled = value;
   document.getElementById('btnAdd').disabled = value || !permissions.add;
   document.getElementById('btnAdd').title = permissions.add ? '' : '需要新增客户投诉权限';
-  document.getElementById('btnExport').disabled = value || !hasLoadedData || !filtered.length;
+  document.getElementById('btnExport').disabled = value || exporting || !hasLoadedData || !filtered.length;
   document.getElementById('btnSave').disabled = value || !(editingId ? permissions.change : permissions.add);
   document.getElementById('btnDetailEdit').disabled = value || !permissions.change;
   document.querySelectorAll('#tblBody button[data-act]').forEach(function(button) {
@@ -486,7 +487,7 @@ document.getElementById('fmImageFiles').addEventListener('change', function(even
   var status = document.getElementById('formStatus');
   status.textContent = '';
   if (pendingImages.length + files.length > 10) { status.textContent = '一次最多添加 10 张新图片'; return; }
-  if (files.some(function(file) { return !/\.(jpe?g|png|gif|webp)$/i.test(file.name) || (file.type && !/^image\/(jpeg|png|gif|webp)$/.test(file.type)); })) {
+  if (files.some(function(file) { return !/\.(jpe?g|png|gif|webp)$/i.test(file.name); })) {
     status.textContent = '仅支持 JPG、PNG、GIF、WebP 图片'; return;
   }
   if (files.some(function(file) { return file.size > 10 * 1024 * 1024; })) { status.textContent = '每张图片不能超过 10MB'; return; }
@@ -634,26 +635,46 @@ document.getElementById('btnReset').addEventListener('click', function() {
 });
 
 /* SECTION: export */
-document.getElementById('btnExport').addEventListener('click', function() {
-  if (filtered.length === 0) { alert('没有可导出的数据'); return; }
-  var headers = COLUMNS.map(function(column) { return column[1]; });
-  var keys = COLUMNS.map(function(column) { return column[0]; });
-  var csv = '\uFEFF' + headers.join(',') + '\n';
-  filtered.forEach(function(r) {
-    var row = keys.map(function(k) {
-      var v = r[k] == null ? '' : String(r[k]);
-      if (/^[\s]*[=+\-@]|^[\t\r\n]/.test(v)) v = "'" + v;
-      return '"' + v.replace(/"/g, '""') + '"';
-    });
-    csv += row.join(',') + '\n';
+document.getElementById('btnExport').addEventListener('click', async function() {
+  if (busy || exporting || !filtered.length) return;
+  var records = filtered.map(function(record) {
+    var data = {};
+    COLUMNS.forEach(function(column) { data[column[0] === 'reported_at' ? 'date' : column[0]] = record[column[0]]; });
+    return data;
   });
-  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement('a');
-  a.href = url;
-  a.download = '客户投诉_' + new Date().toISOString().slice(0, 10) + '.csv';
-  a.click();
-  URL.revokeObjectURL(url);
+  var button = document.getElementById('btnExport');
+  var originalLabel = button.textContent;
+  var controller = new AbortController();
+  var timer = setTimeout(function() { controller.abort(); }, 120000);
+  exporting = true;
+  button.textContent = '正在打包…';
+  setBusy(busy);
+  try {
+    var response = await fetch(pageRoot.dataset.exportUrl, {
+      method: 'POST', credentials: 'same-origin', signal: controller.signal,
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': pageRoot.dataset.csrfToken },
+      body: JSON.stringify({ records: records })
+    });
+    if (!response.ok) {
+      var error = await response.json().catch(function() { return {}; });
+      throw new Error(error.error || '导出请求失败（' + response.status + '）');
+    }
+    if (!(response.headers.get('Content-Type') || '').includes('application/zip')) throw new Error('导出响应无效，请确认登录状态后重试');
+    var blob = await response.blob();
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement('a');
+    link.href = url;
+    link.download = '客户投诉_' + new Date().toISOString().slice(0, 10) + '.zip';
+    link.click();
+    setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+  } catch (error) {
+    alert('导出失败：' + (error.name === 'AbortError' ? '打包超时，请缩小查询范围后重试' : error.message));
+  } finally {
+    clearTimeout(timer);
+    exporting = false;
+    button.textContent = originalLabel;
+    setBusy(busy);
+  }
 });
 
 /* SECTION: resize */

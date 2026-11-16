@@ -12,4 +12,5 @@ urlpatterns = [
 	path('records/<int:no>/', views.complaint_record, name='complaint-record'),
 	path('images/', views.complaint_images, name='complaint-images'),
 	path('images/<str:name>/', views.complaint_image, name='complaint-image'),
+	path('export/', views.complaint_export, name='complaint-export'),
 ]

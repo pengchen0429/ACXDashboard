@@ -1,8 +1,10 @@
+import csv
 import json
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
+from zipfile import ZipFile
 
 from PIL import Image
 
@@ -165,6 +167,22 @@ class ComplaintApiTests(TestCase):
 			self.client.logout()
 			self.assertEqual(self.client.get(urls[0]).status_code, 302)
 
+	def test_jpeg_alias_mime_types_and_real_format_validation(self):
+		self.login_writer()
+		with TemporaryDirectory() as directory, self.settings(COMPLAINT_IMAGE_ROOT=directory):
+			buffer = BytesIO()
+			Image.new('RGB', (2, 2), 'red').save(buffer, format='JPEG')
+			for filename, content_type in (('photo.jpg', 'image/jpg'), ('photo.JPG', 'application/octet-stream'), ('photo.JpEg', 'image/pjpeg')):
+				with self.subTest(filename=filename, content_type=content_type):
+					upload = SimpleUploadedFile(filename, buffer.getvalue(), content_type=content_type)
+					response = self.client.post(reverse('complaint-images'), {'images': upload})
+					self.assertEqual(response.status_code, 201)
+					self.assertTrue(response.json()['images'][0]['path'].endswith('.jpg'))
+			buffer = BytesIO()
+			Image.new('RGB', (2, 2), 'red').save(buffer, format='BMP')
+			upload = SimpleUploadedFile('fake.jpg', buffer.getvalue(), content_type='image/jpeg')
+			self.assertEqual(self.client.post(reverse('complaint-images'), {'images': upload}).status_code, 400)
+
 	def test_image_validation_prevents_partial_uploads(self):
 		self.login_writer()
 		with TemporaryDirectory() as directory, self.settings(COMPLAINT_IMAGE_ROOT=directory):
@@ -204,6 +222,60 @@ class ComplaintApiTests(TestCase):
 			Path(directory, 'secret.txt').write_text('private fixture', encoding='utf-8')
 			self.assertEqual(self.client.get(reverse('complaint-image', args=['secret.txt'])).status_code, 404)
 			self.assertEqual(self.client.get(reverse('complaint-image', args=['0' * 32 + '.png'])).status_code, 404)
+
+	def test_export_contains_csv_and_corresponding_images(self):
+		with TemporaryDirectory() as directory, self.settings(COMPLAINT_IMAGE_ROOT=directory):
+			name = 'a' * 32 + '.png'
+			image = self.image_upload().read()
+			Path(directory, name).write_bytes(image)
+			records = [
+				{'no': '9007199254740993', 'customer': '=1+1', 'remark': '中文,换行\n备注', 'defect_pictures': str(Path(directory, name))},
+				{'no': '2', 'defect_pictures': reverse('complaint-image', args=[name])},
+			]
+			with patch('apps.complaint.views.ComplaintList.objects.order_by') as query:
+				response = self.client.post(reverse('complaint-export'), json.dumps({'records': records}), content_type='application/json')
+				query.assert_not_called()
+			self.assertEqual(response.status_code, 200)
+			self.assertEqual(response['Content-Type'], 'application/zip')
+			self.assertIn('no-store', response['Cache-Control'])
+			with ZipFile(BytesIO(b''.join(response.streaming_content))) as bundle:
+				self.assertEqual(set(bundle.namelist()), {'complaints.csv', 'images/' + name})
+				self.assertEqual(bundle.read('images/' + name), image)
+				csv_bytes = bundle.read('complaints.csv')
+				self.assertTrue(csv_bytes.startswith(b'\xef\xbb\xbf'))
+				rows = list(csv.reader(csv_bytes.decode('utf-8-sig').splitlines(keepends=True)))
+				self.assertEqual(len(rows[0]), 15)
+				self.assertEqual(rows[1][0], '9007199254740993')
+				self.assertEqual(rows[1][3], "'=1+1")
+				self.assertEqual(rows[1][8], 'images/' + name)
+				self.assertEqual(rows[2][8], 'images/' + name)
+				self.assertEqual(rows[1][14], '中文,换行\n备注')
+
+	def test_export_rejects_missing_external_and_traversal_images(self):
+		with TemporaryDirectory() as directory, self.settings(COMPLAINT_IMAGE_ROOT=directory):
+			name = 'a' * 32 + '.png'
+			for reference in (str(Path(directory, name)), '../' + name, str(Path(directory).parent / name), '/complaint/images/../secret.txt/', 'https://example.com/image.jpg'):
+				with self.subTest(reference=reference):
+					response = self.client.post(reverse('complaint-export'), json.dumps({'records': [{'defect_pictures': reference}]}), content_type='application/json')
+					self.assertEqual(response.status_code, 400)
+			Path(directory, name).write_bytes(self.image_upload().read())
+			with patch('apps.complaint.views.MAX_EXPORT_BYTES', 1):
+				response = self.client.post(reverse('complaint-export'), json.dumps({'records': [{'defect_pictures': str(Path(directory, name))}]}), content_type='application/json')
+				self.assertEqual(response.status_code, 400)
+
+	def test_export_requires_login_csrf_and_valid_records(self):
+		url = reverse('complaint-export')
+		for payload in ('{', '[]', '{}', '{"records":[]}', '{"records":[null]}', '{"records":[{"customer":{}}]}'):
+			self.assertEqual(self.client.post(url, payload, content_type='application/json').status_code, 400)
+		self.client.logout()
+		self.assertEqual(self.client.post(url, '{}', content_type='application/json').status_code, 302)
+		self.client = Client(enforce_csrf_checks=True)
+		self.client.force_login(self.reader)
+		self.assertEqual(self.client.post(url, '{"records":[{}]}', content_type='application/json').status_code, 403)
+		token = self.client.get(reverse('complaint')).cookies['csrftoken'].value
+		response = self.client.post(url, '{"records":[{}]}', content_type='application/json', HTTP_X_CSRFTOKEN=token)
+		self.assertEqual(response.status_code, 200)
+		response.close()
 
 
 class ComplaintModelTests(TestCase):

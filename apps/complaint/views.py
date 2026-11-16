@@ -1,8 +1,13 @@
+import csv
 import json
 import logging
 import re
 import uuid
 import warnings
+from io import StringIO
+from pathlib import Path
+from tempfile import SpooledTemporaryFile
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from PIL import Image
 
@@ -26,6 +31,14 @@ IMAGE_FORMATS = {'JPEG': ('jpg', 'image/jpeg'), 'PNG': ('png', 'image/png'), 'GI
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_IMAGE_PIXELS = 20_000_000
 MAX_IMAGE_COUNT = 10
+MAX_EXPORT_BYTES = 200 * 1024 * 1024
+EXPORT_COLUMNS = (
+	('no', '编号'), ('area', '区域'), ('date', '时间'), ('customer', '客户'),
+	('complaint_type', '投诉等级'), ('webbing_type', '带型'), ('complaint', '投诉点'),
+	('classification', '分类'), ('defect_pictures', '投诉图片'), ('root_cause', '根本原因'),
+	('corrective_action', '纠正措施'), ('res', '责任人'), ('completion_time', '完成时间'),
+	('state', '状态'), ('remark', '备注'),
+)
 
 
 def complaint_image_storage():
@@ -172,3 +185,80 @@ def complaint_image(request, name):
 	response = FileResponse(image_file, content_type=content_type)
 	response['X-Content-Type-Options'] = 'nosniff'
 	return response
+
+
+@never_cache
+@login_required(login_url='login')
+@require_http_methods(['POST'])
+def complaint_export(request):
+	try:
+		data = json.loads(request.body)
+	except (ValueError, UnicodeDecodeError):
+		return JsonResponse({'error': '导出数据不是有效的 JSON'}, status=400)
+	records = data.get('records') if isinstance(data, dict) else None
+	if not isinstance(records, list) or not records or len(records) > 10000:
+		return JsonResponse({'error': '每次请导出 1 至 10000 条投诉记录'}, status=400)
+	archive = SpooledTemporaryFile(max_size=10 * 1024 * 1024)
+	try:
+		storage = complaint_image_storage()
+		root = Path(storage.location).resolve()
+		images = {}
+		total_bytes = 0
+		output = StringIO(newline='')
+		writer = csv.writer(output)
+		writer.writerow([label for key, label in EXPORT_COLUMNS])
+		for record in records:
+			if not isinstance(record, dict):
+				raise ValueError('导出记录格式不正确')
+			row = []
+			for key, label in EXPORT_COLUMNS:
+				value = record.get(key)
+				if not isinstance(value, (str, int, float, bool, type(None))):
+					raise ValueError('导出字段格式不正确')
+				value = '' if value is None else str(value)
+				if key == 'defect_pictures':
+					references = []
+					for reference in value.splitlines():
+						reference = reference.strip()
+						if not reference:
+							continue
+						match = re.fullmatch(re.escape(reverse('complaint-images')) + r'([0-9a-f]{32}\.(?:jpg|png|gif|webp))/', reference)
+						if match:
+							image_path = Path(storage.path(match.group(1))).resolve()
+						else:
+							image_path = Path(reference)
+							if not image_path.is_absolute():
+								raise ValueError('部分图片不在投诉图片目录内，无法打包')
+							image_path = image_path.resolve()
+						if image_path.parent != root or not re.fullmatch(r'[0-9a-f]{32}\.(jpg|png|gif|webp)', image_path.name):
+							raise ValueError('部分图片不在投诉图片目录内，无法打包')
+						name = 'images/' + image_path.name
+						if name not in images:
+							total_bytes += image_path.stat().st_size
+							if total_bytes > MAX_EXPORT_BYTES:
+								raise ValueError('导出图片总大小不能超过 200MB，请缩小查询范围')
+							images[name] = image_path
+						references.append(name)
+					value = '\n'.join(references)
+				if re.match(r'^\s*[=+\-@]|^[\t\r\n]', value):
+					value = "'" + value
+				row.append(value)
+			writer.writerow(row)
+		with ZipFile(archive, 'w', compression=ZIP_DEFLATED) as bundle:
+			bundle.writestr('complaints.csv', output.getvalue().encode('utf-8-sig'))
+			for name, image_path in images.items():
+				bundle.write(image_path, name)
+		archive.seek(0)
+		response = FileResponse(archive, content_type='application/zip', as_attachment=True, filename='complaints_' + timezone.localdate().isoformat() + '.zip')
+		response['X-Content-Type-Options'] = 'nosniff'
+		return response
+	except FileNotFoundError:
+		archive.close()
+		return JsonResponse({'error': '部分投诉图片文件不存在，无法导出完整图片，请检查图片目录'}, status=400)
+	except ValueError as error:
+		archive.close()
+		return JsonResponse({'error': str(error)}, status=400)
+	except OSError:
+		archive.close()
+		logger.exception('Complaint export failed')
+		return JsonResponse({'error': '导出失败，无法读取投诉图片或创建压缩包'}, status=503)

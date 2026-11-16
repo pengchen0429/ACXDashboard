@@ -4,12 +4,12 @@
 {% block title %}客户投诉管理 - CNSX数据看板{% endblock %}
 
 {% block head_extra %}
-<link rel="stylesheet" href="{% static 'css/complaint.css' %}?v=manual-query-paths-1">
+<link rel="stylesheet" href="{% static 'css/complaint.css' %}?v=csv-images-1">
 <script src="{% static 'js/echarts.min.js' %}"></script>
 {% endblock %}
 
 {% block content %}
-<div class="complaint-page" data-records-url="{% url 'complaint-records' %}" data-record-url="{% url 'complaint-record' 0 %}" data-images-url="{% url 'complaint-images' %}" data-csrf-token="{{ csrf_token }}" data-can-add="{{ perms.complaint.add_complaintlist|yesno:'true,false' }}" data-can-change="{{ perms.complaint.change_complaintlist|yesno:'true,false' }}" data-can-delete="{{ perms.complaint.delete_complaintlist|yesno:'true,false' }}">
+<div class="complaint-page" data-records-url="{% url 'complaint-records' %}" data-record-url="{% url 'complaint-record' 0 %}" data-images-url="{% url 'complaint-images' %}" data-export-url="{% url 'complaint-export' %}" data-csrf-token="{{ csrf_token }}" data-can-add="{{ perms.complaint.add_complaintlist|yesno:'true,false' }}" data-can-change="{{ perms.complaint.change_complaintlist|yesno:'true,false' }}" data-can-delete="{{ perms.complaint.delete_complaintlist|yesno:'true,false' }}">
 <!-- SECTION: header -->
 <div class="header">
   <h1>📣 客户投诉管理</h1>
@@ -53,7 +53,7 @@
         <button class="btn btn-primary" id="btnQuery">🔍 查询</button>
         <button class="btn btn-secondary" id="btnReset">↺ 重置</button>
         <button class="btn btn-success" id="btnAdd" data-primary-action disabled>＋ 新增投诉</button>
-        <button class="btn btn-secondary" id="btnExport" disabled>📥 导出 CSV</button>
+        <button class="btn btn-secondary" id="btnExport" disabled>📥 导出 CSV 和图片</button>
       </div>
     </div>
   </div>
@@ -176,7 +176,7 @@
           <textarea class="text-input" id="fmPictures" placeholder="图片磁盘路径，每行一个"></textarea>
           <div class="image-actions">
             <button type="button" class="btn btn-secondary btn-mini" id="btnAddImage" aria-controls="fmImageFiles">＋ 新增图片</button>
-            <input type="file" id="fmImageFiles" accept="image/jpeg,image/png,image/gif,image/webp" multiple hidden>
+            <input type="file" id="fmImageFiles" accept=".jpg,.jpeg,.png,.gif,.webp,image/jpeg,image/png,image/gif,image/webp" multiple hidden>
           </div>
           <div class="image-previews" id="imagePreviews" aria-label="投诉图片预览"></div>
         </div>
@@ -231,5 +231,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/complaint.js' %}?v=manual-query-paths-1"></script>
+<script src="{% static 'js/complaint.js' %}?v=csv-images-1"></script>
 {% endblock %}

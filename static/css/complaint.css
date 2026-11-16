@@ -231,7 +231,7 @@
   .link-btn { background:none; border:none; color: var(--text-muted); font-size: 12px; cursor: pointer; text-decoration: underline; padding: 0; }
   .link-btn:hover { color: var(--accent-cyan); }
 
-  @media (max-width: 1600px) {
+  @media (max-width: 1800px) {
     .filter-row { grid-template-columns: repeat(3, minmax(100px, 1fr)); }
     .filter-group:first-child { grid-column: 1 / -1; }
     .filter-actions { grid-column: 1 / -1; justify-content: flex-end; }
