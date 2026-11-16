@@ -31,7 +31,13 @@
 		if (!event.target.closest('.quality-select')) closeFilters(false);
 	});
 	document.addEventListener('keydown', function(event) {
-		if (event.key === 'Escape') closeFilters(true);
+		if (event.key === 'Escape') {
+			closeFilters(true);
+			if (chartDialog && chartDialog.open) {
+				event.preventDefault();
+				chartDialog.close();
+			}
+		}
 	});
 	function selectedValues(input) {
 		return Array.from(input.selectedOptions).map(function(option) {return option.value;});
@@ -184,8 +190,56 @@
 		return !message;
 	}
 
+	var chartDialog = document.getElementById('analyticsChartDialog');
+	var expandedChart;
+	function expandChart(element, button) {
+		if (chartDialog.open) return;
+		closeFilters(false);
+		var card = element.parentElement;
+		var placeholder = document.createElement('div');
+		placeholder.className = card.className + ' chart-placeholder';
+		placeholder.style.height = card.getBoundingClientRect().height + 'px';
+		placeholder.setAttribute('aria-hidden', 'true');
+		expandedChart = {element: element, card: card, placeholder: placeholder, button: button};
+		card.replaceWith(placeholder);
+		chartDialog.append(card);
+		chartDialog.setAttribute('aria-labelledby', element.id + '-title');
+		document.body.classList.add('analytics-chart-open');
+		chartDialog.showModal();
+		charts[element.id].resize();
+	}
+	chartDialog.querySelector('.chart-dialog-close').addEventListener('click', function() {chartDialog.close();});
+	chartDialog.addEventListener('click', function(event) {
+		if (event.target !== chartDialog) return;
+		var rect = chartDialog.getBoundingClientRect();
+		if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) chartDialog.close();
+	});
+	chartDialog.addEventListener('close', function() {
+		if (!expandedChart) return;
+		var previous = expandedChart;
+		expandedChart = null;
+		previous.placeholder.replaceWith(previous.card);
+		document.body.classList.remove('analytics-chart-open');
+		charts[previous.element.id].resize();
+		previous.button.focus({preventScroll: true});
+	});
 	document.querySelectorAll('.analytics-page [data-chart]').forEach(function(element) {
 		charts[element.id] = echarts.init(element);
+		var title = element.parentElement.querySelector('.card-title');
+		title.id = element.id + '-title';
+		var expandButton = document.createElement('button');
+		expandButton.type = 'button';
+		expandButton.className = 'chart-expand';
+		expandButton.title = '放大图表';
+		expandButton.setAttribute('aria-label', '放大：' + title.textContent);
+		var expandIcon = document.createElement('img');
+		expandIcon.src = pageElement.dataset.expandIcon;
+		expandIcon.alt = '';
+		expandIcon.width = 16;
+		expandIcon.height = 16;
+		expandButton.append(expandIcon);
+		expandButton.addEventListener('click', function() {expandChart(element, expandButton);});
+		title.append(expandButton);
 		var status = element.parentElement.querySelector('.trend-status');
 		if (!status) {
 			status = document.createElement('p');
