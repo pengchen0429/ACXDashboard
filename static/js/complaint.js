@@ -288,13 +288,13 @@ function renderCharts() {
   filtered.forEach(function(r) {
     if (!r.date) return;
     var m = r.date.slice(0, 7);
-    if (!monthMap[m]) monthMap[m] = { total: 0, severe: 0 };
+    if (!monthMap[m]) monthMap[m] = { total: 0, gradeA: 0 };
     monthMap[m].total++;
-    if (r.level === '严重') monthMap[m].severe++;
+    if (r.level === 'A') monthMap[m].gradeA++;
   });
   var months = Object.keys(monthMap).sort();
   var totals = months.map(function(m) { return monthMap[m].total; });
-  var severs = months.map(function(m) { return monthMap[m].severe; });
+  var gradeACounts = months.map(function(m) { return monthMap[m].gradeA; });
   var c1 = chart('chartTrend');
   if (c1) c1.setOption({
     tooltip: Object.assign({ trigger: 'axis' }, tip()),
@@ -306,7 +306,7 @@ function renderCharts() {
       { name: '投诉件数', type: 'bar', barWidth: 22, data: totals,
         itemStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: COLORS.cyan }, { offset: 1, color: 'rgba(0,212,255,0.15)' }] }, borderRadius: [4,4,0,0] },
         label: { show: true, position: 'top', color: '#a0b4c8', fontSize: 11 } },
-      { name: '严重投诉', type: 'line', smooth: true, data: severs, lineStyle: { color: COLORS.red, width: 2 }, itemStyle: { color: COLORS.red }, symbol: 'circle', symbolSize: 6 }
+      { name: '投诉等级A', type: 'line', smooth: true, data: gradeACounts, lineStyle: { color: COLORS.red, width: 2 }, itemStyle: { color: COLORS.red }, symbol: 'circle', symbolSize: 6 }
     ]
   }, true);
 
