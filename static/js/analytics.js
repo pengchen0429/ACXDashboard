@@ -18,6 +18,7 @@
 	var filterInputs = {
 		product_name: document.getElementById('analyticsProductName'),
 		machine: document.getElementById('analyticsMachine'),
+		category: document.getElementById('analyticsCategory'),
 		defect: document.getElementById('analyticsDefect')
 	};
 	var filterWidgets = {};
@@ -121,6 +122,8 @@
 			search.value = '';
 			renderOptions();
 			panel.hidden = false;
+			var availableHeight = window.innerHeight - panel.getBoundingClientRect().top - 12;
+			panel.style.maxHeight = Math.min(340, Math.max(140, availableHeight)) + 'px';
 			trigger.setAttribute('aria-expanded', 'true');
 			search.focus();
 			if (optionsError) loadFilterOptions();

@@ -167,8 +167,8 @@ class DashboardStatisticsTests(SimpleTestCase):
 	def test_filters_use_requested_columns_and_parameterized_values(self, connections):
 		cursor = connections.__getitem__.return_value.cursor.return_value.__enter__.return_value
 		cursor.fetchall.side_effect = [[], [
-			('Belt B', 'M02', 'Defect B'), ('Belt A', 'M01', 'Defect A'),
-			('Belt A', 'M01', 'Defect A'), (None, '', '  '),
+			('Belt B', 'M02', 'Defect B', 'Category B'), ('Belt A', 'M01', 'Defect A', 'Category A'),
+			('Belt A', 'M01', 'Defect A', 'Category A'), (None, '', '  ', None),
 		]]
 		product_name = "Belt'; DROP TABLE tabProduct; --"
 		result = fetch_dashboard_statistics(date(2026, 10, 15), date(2026, 10, 15), product_name, 'M01', 'Defect A')
@@ -181,6 +181,7 @@ class DashboardStatisticsTests(SimpleTestCase):
 		self.assertEqual(options_call.args[1], [datetime(2026, 10, 15), datetime(2026, 10, 16)])
 		self.assertEqual(result['filter_options'], {
 			'product_name': ['Belt A', 'Belt B'], 'machine': ['M01', 'M02'], 'defect': ['Defect A', 'Defect B'],
+			'category': ['Category A', 'Category B'],
 		})
 
 	@patch('apps.analytics.views.fetch_dashboard_statistics', return_value={'total': 0})
@@ -190,7 +191,7 @@ class DashboardStatisticsTests(SimpleTestCase):
 			'product_name': 'Belt A', 'machine': 'M01', 'defect': 'Defect A',
 		})
 		self.assertEqual(response.status_code, 200)
-		fetch_statistics.assert_called_once_with(date(2026, 10, 15), date(2026, 10, 15), product_name=['Belt A'], machine=['M01'], defect=['Defect A'])
+		fetch_statistics.assert_called_once_with(date(2026, 10, 15), date(2026, 10, 15), product_name=['Belt A'], machine=['M01'], defect=['Defect A'], category=[])
 
 	@patch('apps.analytics.views.fetch_dashboard_statistics', return_value={'total': 0})
 	def test_api_forwards_multiple_values_without_splitting_commas(self, fetch_statistics):
@@ -198,21 +199,22 @@ class DashboardStatisticsTests(SimpleTestCase):
 			'start_date': '2026-10-15', 'end_date': '2026-10-15',
 			'product_name': ['Belt A', 'Belt B'], 'machine': ['M01', 'M02'],
 			'defect': ['Defect, A', 'Defect B'],
+			'category': ['Category A', 'Category B'],
 		})
 		self.assertEqual(response.status_code, 200)
 		fetch_statistics.assert_called_once_with(date(2026, 10, 15), date(2026, 10, 15),
-			product_name=['Belt A', 'Belt B'], machine=['M01', 'M02'], defect=['Defect, A', 'Defect B'])
+			product_name=['Belt A', 'Belt B'], machine=['M01', 'M02'], defect=['Defect, A', 'Defect B'], category=['Category A', 'Category B'])
 
 	@patch('apps.analytics.views.connections')
 	def test_multiple_filters_use_in_conditions_and_deduplicate(self, connections):
 		cursor = connections.__getitem__.return_value.cursor.return_value.__enter__.return_value
 		cursor.fetchall.return_value = []
 		fetch_dashboard_statistics(date(2026, 10, 15), date(2026, 10, 15),
-			product_name=['Belt A', 'Belt B', 'Belt A', ''], machine=['M01', 'M02'], defect=['Defect, A', 'Defect B'])
+			product_name=['Belt A', 'Belt B', 'Belt A', ''], machine=['M01', 'M02'], defect=['Defect, A', 'Defect B'], category=['Category A', 'Category B'])
 		query, params = cursor.execute.call_args_list[0].args
-		for column in ('c.ProductName', 'a.cDefine1', 'e.MyCode'):
+		for column in ('c.ProductName', 'a.cDefine1', 'e.MyCode', 'e.Remark'):
 			self.assertIn(' AND ' + column + ' IN (%s, %s)', query)
-		self.assertEqual(params[2:], ['Belt A', 'Belt B', 'M01', 'M02', 'Defect, A', 'Defect B'])
+		self.assertEqual(params[2:], ['Belt A', 'Belt B', 'M01', 'M02', 'Defect, A', 'Defect B', 'Category A', 'Category B'])
 
 	@patch('apps.analytics.views.connections')
 	def test_empty_selections_do_not_add_conditions(self, connections):
@@ -227,7 +229,7 @@ class DashboardStatisticsTests(SimpleTestCase):
 	def test_each_filter_can_be_used_independently(self, connections):
 		cursor = connections.__getitem__.return_value.cursor.return_value.__enter__.return_value
 		cursor.fetchall.return_value = []
-		for name, column in (('product_name', 'c.ProductName'), ('machine', 'a.cDefine1'), ('defect', 'e.MyCode')):
+		for name, column in (('product_name', 'c.ProductName'), ('machine', 'a.cDefine1'), ('defect', 'e.MyCode'), ('category', 'e.Remark')):
 			with self.subTest(name=name):
 				fetch_dashboard_statistics(date(2026, 10, 15), date(2026, 10, 15), **{name: 'Selected'})
 				query, params = cursor.execute.call_args_list[-2].args
@@ -277,12 +279,13 @@ class DashboardFilterOptionsTests(SimpleTestCase):
 	def test_options_are_filtered_by_other_dimensions_without_statistics(self, connections):
 		cursor = connections.__getitem__.return_value.cursor.return_value.__enter__.return_value
 		cursor.fetchall.return_value = [
-			('Belt A', 'M01', 'Defect A'), ('Belt A', 'M02', 'Defect B'),
-			('Belt B', 'M03', 'Defect C'), ('Belt A', 'M01', 'Defect A'), (None, '', '  '),
+			('Belt A', 'M01', 'Defect A', 'Category A'), ('Belt A', 'M02', 'Defect B', 'Category B'),
+			('Belt B', 'M03', 'Defect C', 'Category C'), ('Belt A', 'M01', 'Defect A', 'Category A'), (None, '', '  ', None),
 		]
 		result = fetch_dashboard_filter_options(date(2026, 10, 15), date(2026, 10, 15), product_name=['Belt A'])
 		self.assertEqual(result['filter_options'], {
 			'product_name': ['Belt A', 'Belt B'], 'machine': ['M01', 'M02'], 'defect': ['Defect A', 'Defect B'],
+			'category': ['Category A', 'Category B'],
 		})
 		query, params = cursor.execute.call_args.args
 		self.assertIn('SELECT DISTINCT c.ProductName, a.cDefine1, e.MyCode', query)
@@ -292,11 +295,17 @@ class DashboardFilterOptionsTests(SimpleTestCase):
 			product_name=['Belt A'], machine=['M01'], defect=['Defect A'])
 		self.assertEqual(result['filter_options'], {
 			'product_name': ['Belt A'], 'machine': ['M01'], 'defect': ['Defect A'],
+			'category': ['Category A'],
 		})
 		result = fetch_dashboard_filter_options(date(2026, 10, 15), date(2026, 10, 15), product_name=['Belt A', 'Belt B'])
 		self.assertEqual(result['filter_options']['machine'], ['M01', 'M02', 'M03'])
 		result = fetch_dashboard_filter_options(date(2026, 10, 15), date(2026, 10, 15))
 		self.assertEqual(result['filter_options']['defect'], ['Defect A', 'Defect B', 'Defect C'])
+		result = fetch_dashboard_filter_options(date(2026, 10, 15), date(2026, 10, 15), category=['Category A', 'Category B'])
+		self.assertEqual(result['filter_options'], {
+			'product_name': ['Belt A'], 'machine': ['M01', 'M02'], 'defect': ['Defect A', 'Defect B'],
+			'category': ['Category A', 'Category B', 'Category C'],
+		})
 
 	@patch('apps.analytics.views.fetch_dashboard_statistics')
 	@patch('apps.analytics.views.fetch_dashboard_filter_options', return_value={'filter_options': {}})
@@ -304,11 +313,12 @@ class DashboardFilterOptionsTests(SimpleTestCase):
 		response = self.client.get(reverse('analytics-statistics'), {
 			'options_only': '1', 'start_date': '2026-10-15', 'end_date': '2026-10-15',
 			'product_name': ['Belt A', 'Belt B'],
+			'category': ['Category A', 'Category B'],
 		})
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.json(), {'filter_options': {}})
 		fetch_options.assert_called_once_with(date(2026, 10, 15), date(2026, 10, 15),
-			product_name=['Belt A', 'Belt B'], machine=[], defect=[])
+			product_name=['Belt A', 'Belt B'], machine=[], defect=[], category=['Category A', 'Category B'])
 		fetch_statistics.assert_not_called()
 
 	@patch('apps.analytics.views.connections')

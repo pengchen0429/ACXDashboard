@@ -118,14 +118,14 @@ ORDER BY RecordDate
 	return {'days': days, 'start_date': start_date.isoformat(), 'end_date': end_date.isoformat()}
 
 
-def fetch_dashboard_statistics(start_date, end_date, product_name='', machine='', defect=''):
+def fetch_dashboard_statistics(start_date, end_date, product_name='', machine='', defect='', category=''):
 	start_time, end_time = quality_time_bounds(start_date, end_date)
 	day_count = ((end_time - timedelta(microseconds=1)).date() - start_time.date()).days + 1
 	if day_count > 3660:
 		raise ValueError("dashboard range must not exceed 3660 days")
 	filter_sql = ''
 	query_params = [start_time, end_time]
-	for column, value in (('c.ProductName', product_name), ('a.cDefine1', machine), ('e.MyCode', defect)):
+	for column, value in (('c.ProductName', product_name), ('a.cDefine1', machine), ('e.MyCode', defect), ('e.Remark', category)):
 		values = [value] if isinstance(value, str) else value
 		values = list(dict.fromkeys(item for item in values if item))
 		if values:
@@ -147,11 +147,11 @@ GROUP BY RecordDate, Category, Defect, Team, Device, Inspector, Barcode, ScrapCa
 ORDER BY RecordDate
 """, query_params)
 		rows = cursor.fetchall()
-		cursor.execute('SELECT DISTINCT c.ProductName, a.cDefine1, e.MyCode ' + QUALITY_FROM_SQL, [start_time, end_time])
+		cursor.execute('SELECT DISTINCT c.ProductName, a.cDefine1, e.MyCode, e.Remark ' + QUALITY_FROM_SQL, [start_time, end_time])
 		option_rows = cursor.fetchall()
 	filter_options = {
 		name: sorted({str(row[index]).strip() for row in option_rows if row[index] is not None and str(row[index]).strip()})
-		for index, name in enumerate(('product_name', 'machine', 'defect'))
+		for index, name in enumerate(('product_name', 'machine', 'defect', 'category'))
 	}
 	dimensions = ('categories', 'defects', 'teams', 'devices', 'inspectors', 'barcodes', 'scrap_categories', 'products')
 	counts = {name: Counter() for name in dimensions}
@@ -183,17 +183,17 @@ ORDER BY RecordDate
 	return result
 
 
-def fetch_dashboard_filter_options(start_date, end_date, product_name=(), machine=(), defect=()):
+def fetch_dashboard_filter_options(start_date, end_date, product_name=(), machine=(), defect=(), category=()):
 	start_time, end_time = quality_time_bounds(start_date, end_date)
 	day_count = ((end_time - timedelta(microseconds=1)).date() - start_time.date()).days + 1
 	if day_count > 3660:
 		raise ValueError("dashboard range must not exceed 3660 days")
-	selections = [set([value] if isinstance(value, str) else value) - {''} for value in (product_name, machine, defect)]
+	selections = [set([value] if isinstance(value, str) else value) - {''} for value in (product_name, machine, defect, category)]
 	with connections['mesaq'].cursor() as cursor:
-		cursor.execute('SELECT DISTINCT c.ProductName, a.cDefine1, e.MyCode ' + QUALITY_FROM_SQL, [start_time, end_time])
+		cursor.execute('SELECT DISTINCT c.ProductName, a.cDefine1, e.MyCode, e.Remark ' + QUALITY_FROM_SQL, [start_time, end_time])
 		rows = [tuple(str(value).strip() if value is not None else '' for value in row) for row in cursor.fetchall()]
 	options = {}
-	for index, name in enumerate(('product_name', 'machine', 'defect')):
+	for index, name in enumerate(('product_name', 'machine', 'defect', 'category')):
 		options[name] = sorted({
 			row[index] for row in rows if row[index] and all(
 				not selected or row[other_index] in selected
@@ -246,6 +246,7 @@ def dashboard_statistics_data(request):
 			product_name=request.GET.getlist('product_name'),
 			machine=request.GET.getlist('machine'),
 			defect=request.GET.getlist('defect'),
+			category=request.GET.getlist('category'),
 		)
 	except (ValueError, OverflowError):
 		return JsonResponse({'error': 'Invalid time range: use YYYY-MM-DD or YYYY-MM-DDTHH:mm, start <= end, maximum 3660 days.'}, status=400)
