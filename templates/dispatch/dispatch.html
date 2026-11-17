@@ -5,7 +5,7 @@
 {% block body_class %}dispatch-page{% endblock %}
 {% block main_class %}main-content dispatch-content{% endblock %}
 {% block head_extra %}
-<link rel="stylesheet" href="{% static 'css/dispatch.css' %}?v=minute-range-1">
+<link rel="stylesheet" href="{% static 'css/dispatch.css' %}?v=records-line-1">
 <script src="{% static 'js/echarts.min.js' %}"></script>
 {% endblock %}
 
@@ -140,8 +140,8 @@
     </div>
     <div class="table-wrapper" tabindex="0" role="region" aria-label="Dispatch 记录明细">
       <table class="data-table">
-        <thead><tr><th scope="col">工厂</th><th scope="col">时间</th><th scope="col">区域</th><th scope="col">Dispatch 类型</th><th scope="col">描述</th></tr></thead>
-        <tbody id="recordsBody"><tr><td colspan="5" class="empty-tip">尚无查询结果</td></tr></tbody>
+        <thead><tr><th scope="col">工厂</th><th scope="col">时间</th><th scope="col">区域</th><th scope="col">产线</th><th scope="col">Dispatch 类型</th><th scope="col">描述</th></tr></thead>
+        <tbody id="recordsBody"><tr><td colspan="6" class="empty-tip">尚无查询结果</td></tr></tbody>
       </table>
     </div>
     <div class="records-status" id="recordsStatus" role="status" aria-live="polite"></div>
@@ -152,5 +152,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/dispatch.js' %}?v=minute-range-1"></script>
+<script src="{% static 'js/dispatch.js' %}?v=records-line-1"></script>
 {% endblock %}

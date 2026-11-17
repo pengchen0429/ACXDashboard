@@ -207,7 +207,7 @@ function renderDetails() {
   body.replaceChildren();
   details.rows.forEach(function(record) {
     var row = document.createElement('tr');
-    ['factory', 'reported', 'area', 'type', 'description'].forEach(function(key) {
+    ['factory', 'reported', 'area', 'line', 'type', 'description'].forEach(function(key) {
       var cell = document.createElement('td');
       var value = record[key];
       cell.textContent = value == null || value === '' ? '--' : String(value);
@@ -219,7 +219,7 @@ function renderDetails() {
   if (!details.rows.length) {
     var emptyRow = document.createElement('tr');
     var emptyCell = document.createElement('td');
-    emptyCell.colSpan = 5;
+    emptyCell.colSpan = 6;
     emptyCell.className = 'empty-tip';
     emptyCell.textContent = details.loading ? '正在加载记录…' : details.error || (summary ? '没有符合筛选条件的记录' : '尚无查询结果');
     emptyRow.appendChild(emptyCell);

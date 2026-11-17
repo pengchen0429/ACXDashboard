@@ -115,7 +115,7 @@ class DispatchSnowflakeTests(SimpleTestCase):
 			'query': 'site=ACX&start=2026-11-01T10%3A30&end=2026-11-01T10%3A30',
 		}), content_type='application/json')
 		self.assertEqual(export.status_code, 200)
-		self.assertEqual(load_workbook(BytesIO(export.content)).active.max_column, 5)
+		self.assertEqual(load_workbook(BytesIO(export.content)).active.max_column, 6)
 		self.assertEqual(len(list(load_workbook(BytesIO(export.content)).active.values)), 3)
 		self.assertEqual(self.client.get(reverse('dispatch-data'), {
 			**query, 'end': '2026-11-01T10:29'}).status_code, 400)
@@ -129,6 +129,15 @@ class DispatchSnowflakeTests(SimpleTestCase):
 		})
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual([row['description'] for row in response.json()['records']], [description, ''])
+
+	def test_detail_linecode_is_trimmed_and_null_is_empty(self):
+		self.database.execute('UPDATE dispatches SET linecode = ? WHERE rowid = 1', [' LINE01 '])
+		response = self.client.get(reverse('dispatch-details'), {
+			'site': 'ACX', 'start': '2026-11-01', 'end': '2026-11-30',
+			'area': 'A', 'technician': 'Alice', 'dispatchtype': 'Safety',
+		})
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual([row['line'] for row in response.json()['records']], ['LINE01', ''])
 
 	def test_detail_endpoint_pagination_validation_and_failure(self):
 		query = {'site': ['ACX', 'CNX'], 'start': '2026-11-01', 'end': '2026-11-30',
@@ -304,10 +313,10 @@ class DispatchSnowflakeTests(SimpleTestCase):
 @override_settings(AUTHENTICATION_BACKENDS=['django.contrib.auth.backends.ModelBackend'])
 class DispatchDataTests(SimpleTestCase):
 	@patch('apps.dispatch.views.get_dispatch_details')
-	def test_export_creates_five_column_detail_excel_with_dates_and_descriptions(self, mock_details):
+	def test_export_creates_six_column_detail_excel_with_dates_lines_and_descriptions(self, mock_details):
 		mock_details.return_value = [
-			{'factory': 'ACX', 'reported': datetime(2026, 11, 1, 10, 30), 'area': '区域A', 'type': '=1+1', 'description': '=检查设备\n第二行'},
-			{'factory': 'CNX', 'reported': '2026-11-02T11:30:00', 'area': '区域B', 'type': 'Safety', 'description': ''},
+			{'factory': 'ACX', 'reported': datetime(2026, 11, 1, 10, 30), 'area': '区域A', 'line': '=LINE01', 'type': '=1+1', 'description': '=检查设备\n第二行'},
+			{'factory': 'CNX', 'reported': '2026-11-02T11:30:00', 'area': '区域B', 'line': '', 'type': 'Safety', 'description': ''},
 		]
 		payload = {'query': 'site=ACX&site=CNX&start=2026-11-01&end=2026-11-12&technician=Alice'}
 		response = self.client.post(reverse('dispatch-export'), json.dumps(payload), content_type='application/json')
@@ -317,16 +326,18 @@ class DispatchDataTests(SimpleTestCase):
 		self.assertEqual(workbook.sheetnames, ['Dispatch明细'])
 		worksheet = workbook.active
 		self.assertEqual(list(worksheet.values), [
-			('工厂', '时间', '区域', 'Dispatch类型', '描述'),
-			('ACX', datetime(2026, 11, 1), '区域A', '=1+1', '=检查设备\n第二行'),
-			('CNX', datetime(2026, 11, 2), '区域B', 'Safety', None),
+			('工厂', '时间', '区域', '产线', 'Dispatch类型', '描述'),
+			('ACX', datetime(2026, 11, 1), '区域A', '=LINE01', '=1+1', '=检查设备\n第二行'),
+			('CNX', datetime(2026, 11, 2), '区域B', None, 'Safety', None),
 		])
 		self.assertEqual(worksheet['D2'].data_type, 's')
 		self.assertEqual(worksheet['E2'].data_type, 's')
+		self.assertEqual(worksheet['F2'].data_type, 's')
 		self.assertEqual(worksheet['B2'].number_format, 'yyyy-mm-dd')
 		self.assertTrue(worksheet['D2'].alignment.wrap_text)
 		self.assertTrue(worksheet['E2'].alignment.wrap_text)
-		self.assertEqual(worksheet.auto_filter.ref, 'A1:E3')
+		self.assertTrue(worksheet['F2'].alignment.wrap_text)
+		self.assertEqual(worksheet.auto_filter.ref, 'A1:F3')
 		self.assertEqual(mock_details.call_args.kwargs['site'], ['ACX', 'CNX'])
 		self.assertEqual(mock_details.call_args.kwargs['technicians'], ['Alice'])
 
@@ -339,12 +350,12 @@ class DispatchDataTests(SimpleTestCase):
 				content_type='application/json').status_code, 400)
 
 	@patch('apps.dispatch.views.get_dispatch_details', return_value=[])
-	def test_empty_detail_export_has_only_five_column_header(self, mock_details):
+	def test_empty_detail_export_has_only_six_column_header(self, mock_details):
 		response = self.client.post(reverse('dispatch-export'), json.dumps({
 			'query': 'site=ACX&start=2026-11-01&end=2026-11-12'}), content_type='application/json')
 		self.assertEqual(response.status_code, 200)
 		workbook = load_workbook(BytesIO(response.content))
-		self.assertEqual(list(workbook.active.values), [('工厂', '时间', '区域', 'Dispatch类型', '描述')])
+		self.assertEqual(list(workbook.active.values), [('工厂', '时间', '区域', '产线', 'Dispatch类型', '描述')])
 
 	@patch('apps.dispatch.views.logger.exception')
 	@patch('apps.dispatch.views.get_dispatch_details', side_effect=DatabaseError('secret'))
@@ -432,10 +443,11 @@ class DispatchPageTests(SimpleTestCase):
 		self.assertContains(response, 'Dispatch查询')
 		self.assertContains(response, '<a class="nav-item active" href="/dispatch/" data-page="dispatch" aria-current="page">')
 		self.assertContains(response, '<details class="nav-group" open>', count=2)
-		self.assertContains(response, '/static/js/dispatch.js?v=minute-range-1')
+		self.assertContains(response, '/static/js/dispatch.js?v=records-line-1')
 		self.assertContains(response, 'id="chartLine"')
 		self.assertNotContains(response, 'id="chartStatus"')
-		self.assertContains(response, '/static/css/dispatch.css?v=minute-range-1')
+		self.assertContains(response, '/static/css/dispatch.css?v=records-line-1')
+		self.assertContains(response, '<th scope="col">产线</th>')
 		self.assertContains(response, 'type="datetime-local" step="60"', count=2)
 		self.assertContains(response, '<th scope="col">描述</th>')
 		self.assertContains(response, 'class="btn btn-primary multi-select-confirm"', count=4)

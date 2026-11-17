@@ -105,6 +105,7 @@ WITH dispatch_details AS (
 	SELECT "SERVER_SITE_NAME" AS factory,
 		CONVERT_TIMEZONE(%s, 'Asia/Shanghai', TRY_TO_TIMESTAMP_NTZ("reported")) AS reported_at,
 		COALESCE(TRIM("areacode"), '') AS area,
+		COALESCE(TRIM("linecode"), '') AS line,
 		COALESCE(TRIM("createdby"), '') AS submitter,
 		COALESCE(TRIM("dispatchtypecode"), '') AS dispatch_type,
 		COALESCE("description", '') AS description
@@ -114,11 +115,11 @@ WITH dispatch_details AS (
 		AND {ACTIVE_DISPATCH_AREA_FILTER_SQL}
 		AND {ACTIVE_DISPATCH_TYPE_FILTER_SQL}
 )
-SELECT factory AS "factory", reported_at AS "reported", area AS "area", dispatch_type AS "type",
+SELECT factory AS "factory", reported_at AS "reported", area AS "area", line AS "line", dispatch_type AS "type",
 	description AS "description"
 FROM dispatch_details
 WHERE {' AND '.join(conditions)}
-ORDER BY reported_at, factory, area, dispatch_type
+ORDER BY reported_at, factory, area, line, dispatch_type
 {pagination}
 ''', params)
 	for row in rows:

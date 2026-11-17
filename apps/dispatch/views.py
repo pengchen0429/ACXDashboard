@@ -59,10 +59,10 @@ def dispatch_export(request):
 	workbook = Workbook(write_only=True)
 	worksheet = workbook.create_sheet('Dispatch明细')
 	worksheet.freeze_panes = 'A2'
-	for column, width in (('A', 12), ('B', 16), ('C', 28), ('D', 42), ('E', 80)):
+	for column, width in (('A', 12), ('B', 16), ('C', 28), ('D', 18), ('E', 42), ('F', 80)):
 		worksheet.column_dimensions[column].width = width
 	headers = []
-	for title in ('工厂', '时间', '区域', 'Dispatch类型', '描述'):
+	for title in ('工厂', '时间', '区域', '产线', 'Dispatch类型', '描述'):
 		cell = WriteOnlyCell(worksheet, value=title)
 		cell.font = Font(bold=True, color='FFFFFF')
 		cell.fill = PatternFill('solid', fgColor='237A57')
@@ -70,21 +70,21 @@ def dispatch_export(request):
 	worksheet.append(headers)
 	for row in rows:
 		cells = []
-		for key in ('factory', 'reported', 'area', 'type', 'description'):
+		for key in ('factory', 'reported', 'area', 'line', 'type', 'description'):
 			value = row[key]
 			if key == 'reported' and isinstance(value, str):
 				value = datetime.fromisoformat(value)
 			if key == 'reported' and isinstance(value, datetime):
 				value = value.date()
 			cell = WriteOnlyCell(worksheet, value=value)
-			cell.alignment = Alignment(vertical='top', wrap_text=key in ('type', 'description'))
+			cell.alignment = Alignment(vertical='top', wrap_text=key in ('line', 'type', 'description'))
 			if isinstance(value, str):
 				cell.data_type = 's'
 			if key == 'reported':
 				cell.number_format = 'yyyy-mm-dd'
 			cells.append(cell)
 		worksheet.append(cells)
-	worksheet.auto_filter.ref = 'A1:E%s' % (len(rows) + 1)
+	worksheet.auto_filter.ref = 'A1:F%s' % (len(rows) + 1)
 	output = BytesIO()
 	workbook.save(output)
 	response = HttpResponse(output.getvalue(),
