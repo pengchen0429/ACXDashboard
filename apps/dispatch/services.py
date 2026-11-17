@@ -1,4 +1,5 @@
 from collections import Counter
+from datetime import datetime, time
 
 from django.conf import settings
 
@@ -79,7 +80,7 @@ GROUP BY TO_CHAR(reported_at, 'YYYY-MM'), area, submitter, dispatch_type, line, 
 		start.replace(tzinfo=None), end.replace(tzinfo=None)])
 
 
-def get_dispatch_details(start, end, *, site, areas=(), technicians=(), dispatchtypes=()):
+def get_dispatch_details(start, end, *, site, areas=(), technicians=(), dispatchtypes=(), limit=None, offset=0):
 	"""按看板筛选条件读取逐条明细，不合并相同字段的记录。"""
 	sites = (site,) if isinstance(site, str) else tuple(dict.fromkeys(site))
 	if not sites or any(value not in ('ACX', 'CNX') for value in sites):
@@ -93,23 +94,32 @@ def get_dispatch_details(start, end, *, site, areas=(), technicians=(), dispatch
 		if values:
 			conditions.append(column + ' IN (' + ', '.join(['%s'] * len(values)) + ')')
 			params.extend(values)
+	pagination = ''
+	if limit is not None:
+		if limit < 1 or offset < 0:
+			raise ValueError('Invalid detail pagination')
+		pagination = 'LIMIT %s OFFSET %s'
+		params.extend([limit, offset])
 	rows = fetch_all(f'''
 WITH dispatch_details AS (
 	SELECT "SERVER_SITE_NAME" AS factory,
 		CONVERT_TIMEZONE(%s, 'Asia/Shanghai', TRY_TO_TIMESTAMP_NTZ("reported")) AS reported_at,
 		COALESCE(TRIM("areacode"), '') AS area,
 		COALESCE(TRIM("createdby"), '') AS submitter,
-		COALESCE(TRIM("dispatchtypecode"), '') AS dispatch_type
+		COALESCE(TRIM("dispatchtypecode"), '') AS dispatch_type,
+		COALESCE("description", '') AS description
 	FROM PRD_MANUFACTURING_DB.G_L2L_CONSUMPTION.VW_DISPATCHES AS dispatch_source
 	WHERE "SERVER_SITE_NAME" IN ({site_placeholders})
 		AND COALESCE(LOWER(TRIM("deleted")), '') NOT IN ('t', 'true', '1')
 		AND {ACTIVE_DISPATCH_AREA_FILTER_SQL}
 		AND {ACTIVE_DISPATCH_TYPE_FILTER_SQL}
 )
-SELECT factory AS "factory", reported_at AS "reported", area AS "area", dispatch_type AS "type"
+SELECT factory AS "factory", reported_at AS "reported", area AS "area", dispatch_type AS "type",
+	description AS "description"
 FROM dispatch_details
 WHERE {' AND '.join(conditions)}
 ORDER BY reported_at, factory, area, dispatch_type
+{pagination}
 ''', params)
 	for row in rows:
 		row['factory'] = server_sites[row['factory']]
@@ -131,7 +141,7 @@ def get_dispatch_summary(start, end, *, site, areas=(), technicians=(), dispatch
 	counts = Counter()
 	months = {}
 	month = start.date().replace(day=1)
-	while month < end.date():
+	while datetime.combine(month, time.min, tzinfo=start.tzinfo) < end:
 		months[month.strftime('%Y-%m')] = {'total': 0, 'closed': 0}
 		month = month.replace(year=month.year + 1, month=1) if month.month == 12 else month.replace(month=month.month + 1)
 	types = Counter()

@@ -199,10 +199,89 @@ document.addEventListener('keydown', function(event) {
 var charts = {};
 var activeRequest;
 var queryNumber = 0;
+var detailsRequest = null;
+var details = {rows: [], page: 0, target: 1, hasNext: false, loading: false, error: ''};
+
+function renderDetails() {
+  var body = document.getElementById('recordsBody');
+  body.replaceChildren();
+  details.rows.forEach(function(record) {
+    var row = document.createElement('tr');
+    ['factory', 'reported', 'area', 'type', 'description'].forEach(function(key) {
+      var cell = document.createElement('td');
+      var value = record[key];
+      cell.textContent = value == null || value === '' ? '--' : String(value);
+      if (key === 'reported') cell.textContent = cell.textContent.slice(0, 10);
+      row.appendChild(cell);
+    });
+    body.appendChild(row);
+  });
+  if (!details.rows.length) {
+    var emptyRow = document.createElement('tr');
+    var emptyCell = document.createElement('td');
+    emptyCell.colSpan = 5;
+    emptyCell.className = 'empty-tip';
+    emptyCell.textContent = details.loading ? '正在加载记录…' : details.error || (summary ? '没有符合筛选条件的记录' : '尚无查询结果');
+    emptyRow.appendChild(emptyCell);
+    body.appendChild(emptyRow);
+  }
+  document.getElementById('dispatchRecords').setAttribute('aria-busy', String(details.loading));
+  document.getElementById('recordsCount').textContent = summary ? '共 ' + summary.stats.total + ' 条' : '';
+  document.getElementById('recordsPage').textContent = '第 ' + details.page + ' 页';
+  document.getElementById('recordsPrevious').disabled = details.loading || details.page <= 1;
+  document.getElementById('recordsNext').disabled = details.loading || !details.hasNext;
+  document.getElementById('recordsRetry').hidden = !details.error;
+  document.getElementById('recordsRetry').disabled = details.loading;
+  var status = document.getElementById('recordsStatus');
+  status.classList.toggle('is-error', !!details.error);
+  status.textContent = details.error || (details.loading ? '正在加载记录…' : details.rows.length ?
+    '第 ' + ((details.page - 1) * 50 + 1) + '–' + ((details.page - 1) * 50 + details.rows.length) + ' 条 · 每页 50 条' : '');
+}
+
+async function loadDetails(page) {
+  if (!summary || !summaryFilters) return;
+  if (detailsRequest) detailsRequest.abort();
+  var controller = new AbortController();
+  detailsRequest = controller;
+  var currentQuery = queryNumber;
+  details.loading = true;
+  details.error = '';
+  details.target = page;
+  renderDetails();
+  var params = new URLSearchParams(summaryFilters.query);
+  params.set('page', page);
+  var timeout = setTimeout(function() { controller.abort(); }, 120000);
+  try {
+    var response = await fetch(document.getElementById('dispatchMain').dataset.detailsUrl + '?' + params, {
+      signal: controller.signal, headers: {'Accept': 'application/json'}, cache: 'no-store'
+    });
+    var payload = await response.json();
+    if (currentQuery !== queryNumber || detailsRequest !== controller) return;
+    if (!response.ok || payload.success !== true) throw new Error(payload.error || '记录加载失败，请重试。');
+    if (!Array.isArray(payload.records) || payload.page !== page || typeof payload.has_next !== 'boolean') {
+      throw new Error('记录数据格式不正确，请重试。');
+    }
+    details.rows = payload.records;
+    details.page = page;
+    details.hasNext = payload.has_next;
+    document.querySelector('#dispatchRecords .table-wrapper').scrollTop = 0;
+  } catch (error) {
+    if (currentQuery !== queryNumber || detailsRequest !== controller) return;
+    details.error = error.name === 'AbortError' ? '记录加载超时，请重试。' : error.message;
+  } finally {
+    clearTimeout(timeout);
+    if (currentQuery === queryNumber && detailsRequest === controller) {
+      details.loading = false;
+      renderDetails();
+    }
+  }
+}
 
 async function doQuery() {
   var currentQuery = ++queryNumber;
   if (activeRequest) activeRequest.abort();
+  if (detailsRequest) detailsRequest.abort();
+  details = {rows: [], page: 0, target: 1, hasNext: false, loading: false, error: ''};
   var controller = new AbortController();
   activeRequest = controller;
   var from = document.getElementById('dateFrom').value;
@@ -247,6 +326,7 @@ async function doQuery() {
     summary = payload;
     summaryFilters = filters;
     status.textContent = payload.stats.total ? '已更新 · ' + payload.stats.total + ' 条' : '没有符合筛选条件的数据';
+    if (payload.stats.total) loadDetails(1);
   } catch (error) {
     if (currentQuery !== queryNumber) return;
     summary = null;
@@ -298,7 +378,7 @@ async function doExport() {
     var url = URL.createObjectURL(await response.blob());
     var link = document.createElement('a');
     link.href = url;
-    link.download = 'Dispatch_' + snapshot.filters.sites.replace(/, /g, '-') + '_' + snapshot.filters.start + '_' + snapshot.filters.end + '.xlsx';
+    link.download = 'Dispatch_' + snapshot.filters.sites.replace(/, /g, '-') + '_' + snapshot.filters.start.replace(/[T:]/g, '-') + '_' + snapshot.filters.end.replace(/[T:]/g, '-') + '.xlsx';
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -415,13 +495,16 @@ function renderCharts() {
 }
 
 function renderAll() {
-  renderStats(); renderCharts();
+  renderStats(); renderCharts(); renderDetails();
   document.getElementById('btnExport').disabled = !summary || exporting;
 }
 
 document.getElementById('btnQuery').addEventListener('click', doQuery);
 document.getElementById('btnReset').addEventListener('click', doReset);
 document.getElementById('btnExport').addEventListener('click', doExport);
+document.getElementById('recordsPrevious').addEventListener('click', function() { loadDetails(details.page - 1); });
+document.getElementById('recordsNext').addEventListener('click', function() { loadDetails(details.page + 1); });
+document.getElementById('recordsRetry').addEventListener('click', function() { loadDetails(details.target); });
 window.addEventListener('resize', function() {
   Object.keys(charts).forEach(function(k) { if (charts[k]) charts[k].resize(); });
 });

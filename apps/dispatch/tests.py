@@ -51,6 +51,7 @@ class DispatchSnowflakeTests(SimpleTestCase):
 			('china^928261', '2026-11-01T12:00:00', 'CNX', 'CNX', 'Safety', None, None, None, ''),
 		])
 		self.database.execute('ALTER TABLE dispatches ADD COLUMN linecode TEXT')
+		self.database.execute('ALTER TABLE dispatches ADD COLUMN description TEXT')
 		self.fetch = patch('apps.dispatch.services.fetch_all', side_effect=self.execute_query).start()
 		patch('common.snowflake.fetch_all', side_effect=self.execute_query).start()
 		self.addCleanup(patch.stopall)
@@ -84,6 +85,69 @@ class DispatchSnowflakeTests(SimpleTestCase):
 		self.assertEqual(data['options']['areas'], ['A', 'B'])
 		self.assertEqual(sum(row['value'] for row in data['types']), 5)
 		self.assertEqual(sum(row['OPEN'] + row['IN WORK'] + row['CLOSED'] for row in data['areas']), 5)
+
+	def test_detail_pages_preserve_filtered_records_and_duplicates(self):
+		parameters = {'site': ['ACX', 'CNX'], 'areas': ['A'],
+			'technicians': ['Alice', 'Bob'], 'dispatchtypes': ['Safety']}
+		all_rows = get_dispatch_details(self.start, self.end, **parameters)
+		pages = [get_dispatch_details(self.start, self.end, **parameters, limit=1, offset=offset)[0]
+			for offset in range(len(all_rows))]
+		self.assertEqual(pages, all_rows)
+		self.assertEqual(len(pages), 3)
+		self.assertEqual(get_dispatch_details(self.start, self.end, **parameters, limit=1, offset=3), [])
+
+	def test_minute_range_includes_end_minute_and_excludes_next_minute(self):
+		self.database.execute('DELETE FROM dispatches')
+		self.database.executemany('INSERT INTO dispatches (SERVER_SITE_NAME, reported, areacode, dispatchtypecode) VALUES (?, ?, ?, ?)', [
+			('china^907371', reported, 'A', 'Safety') for reported in (
+				'2026-11-01T10:29:59', '2026-11-01T10:30:00',
+				'2026-11-01T10:30:59.999999', '2026-11-01T10:31:00')
+		])
+		query = {'site': 'ACX', 'start': '2026-11-01T10:30', 'end': '2026-11-01T10:30'}
+		summary = self.client.get(reverse('dispatch-data'), query)
+		self.assertEqual(summary.status_code, 200)
+		self.assertEqual(summary.json()['stats']['total'], 2)
+		self.assertEqual(summary.json()['trend'], [{'month': '2026-11', 'total': 2, 'closed': 0}])
+		details = self.client.get(reverse('dispatch-details'), query)
+		self.assertEqual(details.status_code, 200)
+		self.assertEqual(len(details.json()['records']), 2)
+		export = self.client.post(reverse('dispatch-export'), json.dumps({
+			'query': 'site=ACX&start=2026-11-01T10%3A30&end=2026-11-01T10%3A30',
+		}), content_type='application/json')
+		self.assertEqual(export.status_code, 200)
+		self.assertEqual(load_workbook(BytesIO(export.content)).active.max_column, 5)
+		self.assertEqual(len(list(load_workbook(BytesIO(export.content)).active.values)), 3)
+		self.assertEqual(self.client.get(reverse('dispatch-data'), {
+			**query, 'end': '2026-11-01T10:29'}).status_code, 400)
+
+	def test_detail_description_preserves_text_and_handles_null(self):
+		description = '检查设备\n<img src=x onerror=alert(1)>'
+		self.database.execute('UPDATE dispatches SET description = ? WHERE rowid = 1', [description])
+		response = self.client.get(reverse('dispatch-details'), {
+			'site': 'ACX', 'start': '2026-11-01', 'end': '2026-11-30',
+			'area': 'A', 'technician': 'Alice', 'dispatchtype': 'Safety',
+		})
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual([row['description'] for row in response.json()['records']], [description, ''])
+
+	def test_detail_endpoint_pagination_validation_and_failure(self):
+		query = {'site': ['ACX', 'CNX'], 'start': '2026-11-01', 'end': '2026-11-30',
+			'area': ['A'], 'technician': ['Alice', 'Bob'], 'dispatchtype': ['Safety']}
+		response = self.client.get(reverse('dispatch-details'), query)
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(len(response.json()['records']), 3)
+		self.assertFalse(response.json()['has_next'])
+		self.assertEqual(response['Cache-Control'], 'no-store')
+		for page in ('0', '-1', 'invalid', '1000001'):
+			self.assertEqual(self.client.get(reverse('dispatch-details'), {**query, 'page': page}).status_code, 400)
+		with patch('apps.dispatch.views.get_dispatch_details', return_value=[{'factory': 'ACX'}] * 51) as details:
+			payload = self.client.get(reverse('dispatch-details'), {**query, 'page': 2}).json()
+			self.assertEqual(len(payload['records']), 50)
+			self.assertTrue(payload['has_next'])
+			self.assertEqual(payload['page'], 2)
+			self.assertEqual(details.call_args.kwargs['offset'], 50)
+		with patch('apps.dispatch.views.get_dispatch_details', side_effect=DatabaseError):
+			self.assertEqual(self.client.get(reverse('dispatch-details'), query).status_code, 502)
 
 	def test_line_distribution_uses_trimmed_codes_and_current_filters(self):
 		self.database.executemany('UPDATE dispatches SET linecode = ? WHERE rowid = ?', [
@@ -240,10 +304,10 @@ class DispatchSnowflakeTests(SimpleTestCase):
 @override_settings(AUTHENTICATION_BACKENDS=['django.contrib.auth.backends.ModelBackend'])
 class DispatchDataTests(SimpleTestCase):
 	@patch('apps.dispatch.views.get_dispatch_details')
-	def test_export_creates_four_column_detail_excel(self, mock_details):
+	def test_export_creates_five_column_detail_excel_with_dates_and_descriptions(self, mock_details):
 		mock_details.return_value = [
-			{'factory': 'ACX', 'reported': datetime(2026, 11, 1, 10, 30), 'area': '区域A', 'type': '=1+1'},
-			{'factory': 'CNX', 'reported': datetime(2026, 11, 2, 11, 30), 'area': '区域B', 'type': 'Safety'},
+			{'factory': 'ACX', 'reported': datetime(2026, 11, 1, 10, 30), 'area': '区域A', 'type': '=1+1', 'description': '=检查设备\n第二行'},
+			{'factory': 'CNX', 'reported': '2026-11-02T11:30:00', 'area': '区域B', 'type': 'Safety', 'description': ''},
 		]
 		payload = {'query': 'site=ACX&site=CNX&start=2026-11-01&end=2026-11-12&technician=Alice'}
 		response = self.client.post(reverse('dispatch-export'), json.dumps(payload), content_type='application/json')
@@ -253,11 +317,16 @@ class DispatchDataTests(SimpleTestCase):
 		self.assertEqual(workbook.sheetnames, ['Dispatch明细'])
 		worksheet = workbook.active
 		self.assertEqual(list(worksheet.values), [
-			('工厂', '时间', '区域', 'Dispatch类型'),
-			('ACX', datetime(2026, 11, 1, 10, 30), '区域A', '=1+1'),
-			('CNX', datetime(2026, 11, 2, 11, 30), '区域B', 'Safety'),
+			('工厂', '时间', '区域', 'Dispatch类型', '描述'),
+			('ACX', datetime(2026, 11, 1), '区域A', '=1+1', '=检查设备\n第二行'),
+			('CNX', datetime(2026, 11, 2), '区域B', 'Safety', None),
 		])
 		self.assertEqual(worksheet['D2'].data_type, 's')
+		self.assertEqual(worksheet['E2'].data_type, 's')
+		self.assertEqual(worksheet['B2'].number_format, 'yyyy-mm-dd')
+		self.assertTrue(worksheet['D2'].alignment.wrap_text)
+		self.assertTrue(worksheet['E2'].alignment.wrap_text)
+		self.assertEqual(worksheet.auto_filter.ref, 'A1:E3')
 		self.assertEqual(mock_details.call_args.kwargs['site'], ['ACX', 'CNX'])
 		self.assertEqual(mock_details.call_args.kwargs['technicians'], ['Alice'])
 
@@ -270,12 +339,12 @@ class DispatchDataTests(SimpleTestCase):
 				content_type='application/json').status_code, 400)
 
 	@patch('apps.dispatch.views.get_dispatch_details', return_value=[])
-	def test_empty_detail_export_has_only_four_column_header(self, mock_details):
+	def test_empty_detail_export_has_only_five_column_header(self, mock_details):
 		response = self.client.post(reverse('dispatch-export'), json.dumps({
 			'query': 'site=ACX&start=2026-11-01&end=2026-11-12'}), content_type='application/json')
 		self.assertEqual(response.status_code, 200)
 		workbook = load_workbook(BytesIO(response.content))
-		self.assertEqual(list(workbook.active.values), [('工厂', '时间', '区域', 'Dispatch类型')])
+		self.assertEqual(list(workbook.active.values), [('工厂', '时间', '区域', 'Dispatch类型', '描述')])
 
 	@patch('apps.dispatch.views.logger.exception')
 	@patch('apps.dispatch.views.get_dispatch_details', side_effect=DatabaseError('secret'))
@@ -363,10 +432,12 @@ class DispatchPageTests(SimpleTestCase):
 		self.assertContains(response, 'Dispatch查询')
 		self.assertContains(response, '<a class="nav-item active" href="/dispatch/" data-page="dispatch" aria-current="page">')
 		self.assertContains(response, '<details class="nav-group" open>', count=2)
-		self.assertContains(response, '/static/js/dispatch.js?v=line-distribution-2')
+		self.assertContains(response, '/static/js/dispatch.js?v=minute-range-1')
 		self.assertContains(response, 'id="chartLine"')
 		self.assertNotContains(response, 'id="chartStatus"')
-		self.assertContains(response, '/static/css/dispatch.css?v=excel-export-1')
+		self.assertContains(response, '/static/css/dispatch.css?v=minute-range-1')
+		self.assertContains(response, 'type="datetime-local" step="60"', count=2)
+		self.assertContains(response, '<th scope="col">描述</th>')
 		self.assertContains(response, 'class="btn btn-primary multi-select-confirm"', count=4)
 		self.assertContains(response, 'class="btn btn-secondary multi-select-reset"', count=4)
 		self.assertContains(response, 'class="multi-select" data-name="Site"')

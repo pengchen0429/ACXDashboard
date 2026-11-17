@@ -5,7 +5,7 @@
 {% block body_class %}dispatch-page{% endblock %}
 {% block main_class %}main-content dispatch-content{% endblock %}
 {% block head_extra %}
-<link rel="stylesheet" href="{% static 'css/dispatch.css' %}?v=excel-export-1">
+<link rel="stylesheet" href="{% static 'css/dispatch.css' %}?v=minute-range-1">
 <script src="{% static 'js/echarts.min.js' %}"></script>
 {% endblock %}
 
@@ -17,7 +17,7 @@
   <div class="clock" id="clock"></div>
 </div>
 
-<div class="main" id="dispatchMain" data-url="{% url 'dispatch-data' %}" data-options-url="{% url 'dispatch-options' %}" data-export-url="{% url 'dispatch-export' %}">
+<div class="main" id="dispatchMain" data-url="{% url 'dispatch-data' %}" data-options-url="{% url 'dispatch-options' %}" data-export-url="{% url 'dispatch-export' %}" data-details-url="{% url 'dispatch-details' %}">
   {% csrf_token %}
   <!-- SECTION: filter-bar -->
   <div class="filter-bar">
@@ -40,9 +40,9 @@
       <div class="filter-group filter-group-date">
         <div class="filter-label">时间范围</div>
         <div class="date-range">
-          <input type="date" class="date-input" id="dateFrom" aria-label="报告开始日期" value="{{ date_from }}">
+          <input type="datetime-local" step="60" class="date-input" id="dateFrom" aria-label="报告开始时间" value="{{ date_from }}">
           <span style="color:var(--text-muted);font-size:12px;">至</span>
-          <input type="date" class="date-input" id="dateTo" aria-label="报告结束日期" value="{{ date_to }}">
+          <input type="datetime-local" step="60" class="date-input" id="dateTo" aria-label="报告结束时间" value="{{ date_to }}">
         </div>
       </div>
       <div class="filter-group">
@@ -128,10 +128,29 @@
     </div>
   </div>
 
+  <section class="records-section" aria-labelledby="recordsTitle" id="dispatchRecords" aria-busy="false">
+    <div class="table-header">
+      <h2 class="table-title" id="recordsTitle">Dispatch 记录 <span class="count" id="recordsCount"></span></h2>
+      <div class="records-pagination" aria-label="记录分页">
+        <button type="button" class="btn btn-secondary records-page-button" id="recordsPrevious" aria-label="上一页" title="上一页" disabled>&#8249;</button>
+        <span id="recordsPage" aria-live="polite">第 0 页</span>
+        <button type="button" class="btn btn-secondary records-page-button" id="recordsNext" aria-label="下一页" title="下一页" disabled>&#8250;</button>
+        <button type="button" class="btn btn-secondary" id="recordsRetry" hidden>重试</button>
+      </div>
+    </div>
+    <div class="table-wrapper" tabindex="0" role="region" aria-label="Dispatch 记录明细">
+      <table class="data-table">
+        <thead><tr><th scope="col">工厂</th><th scope="col">时间</th><th scope="col">区域</th><th scope="col">Dispatch 类型</th><th scope="col">描述</th></tr></thead>
+        <tbody id="recordsBody"><tr><td colspan="5" class="empty-tip">尚无查询结果</td></tr></tbody>
+      </table>
+    </div>
+    <div class="records-status" id="recordsStatus" role="status" aria-live="polite"></div>
+  </section>
+
 </div>
 
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/dispatch.js' %}?v=line-distribution-2"></script>
+<script src="{% static 'js/dispatch.js' %}?v=minute-range-1"></script>
 {% endblock %}
