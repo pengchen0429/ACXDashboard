@@ -265,7 +265,7 @@ function renderCharts(message) {
   }
   var areas = d.areas.slice(0, 10);
   var lines = topDpmu(d.lines);
-  var products = d.products.slice(0, 10);
+  var products = topDpmu(d.products);
   var categories = d.categories.slice(0, 10);
   var defects = topDpmu(d.defects);
   function values(rows, key) { return rows.map(function(row) { return row[key]; }); }
@@ -276,7 +276,7 @@ function renderCharts(message) {
   initChart('chart5', hbarOpt('疵点 DPMU（前10）', values(defects, 'name'), values(defects, 'dpmu'), '#fac858'));
   initChart('chart6', barOpt('报废数量（月度）', values(d.months, 'name'), values(d.months, 'scrap'), '#ff6b6b'));
   initChart('chart7', barOpt('产量（月度）', values(d.months, 'name'), values(d.months, 'production'), '#ff9f43'));
-  initChart('chart8', barWithProdOpt('产品 DPMU / 产量（报废量前10）', values(products, 'name'), values(products, 'dpmu'), values(products, 'production'), '#409cff'));
+  initChart('chart8', barOpt('产品 DPMU（前10）', values(products, 'name'), values(products, 'dpmu'), '#409cff'));
   initChart('chart9', hbarOpt('疵点分类DPMU', values(categories, 'name'), values(categories, 'dpmu'), '#b28dff'));
 }
 

@@ -94,7 +94,7 @@
     <div class="card"><div class="chart-container" id="chart6" data-chart="true"></div></div>
     <!-- chart7 | 产量（月度） | 桌面第3行左侧：每月产量合计 -->
     <div class="card"><div class="chart-container" id="chart7" data-chart="true"></div></div>
-    <!-- chart8 | 产品 DPMU / 产量（报废量前10） | 桌面第3行中间：产品比值与产量双轴图 -->
+    <!-- chart8 | 产品 DPMU（前10） | 桌面第3行中间：按DPMU降序排名 -->
     <div class="card"><div class="chart-container" id="chart8" data-chart="true"></div></div>
     <!-- chart9 | 疵点分类DPMU | 桌面第3行右侧：疵点分类对比 -->
     <div class="card"><div class="chart-container" id="chart9" data-chart="true"></div></div>
@@ -108,5 +108,5 @@
 {% block extra_js %}
 <script src="{% static 'js/echarts.min.js' %}"></script>
 <script src="{% static 'js/light-theme.js' %}?v=1"></script>
-<script src="{% static 'js/dpmu.js' %}?v=dpmu-category-options-1"></script>
+<script src="{% static 'js/dpmu.js' %}?v=dpmu-product-only-1"></script>
 {% endblock %}
