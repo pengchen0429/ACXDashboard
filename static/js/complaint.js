@@ -348,12 +348,12 @@ function renderCharts() {
   });
   var customerData = Array.from(customerCounts, function(entry) { return { name: entry[0], value: entry[1] }; }).sort(function(first, second) { return second.value - first.value; });
   customerData.forEach(function(item, index) { item.itemStyle = { color: pal[index % pal.length] }; });
-  renderPieDetails('customerDetails', customerData, '客户');
   var customerChart = chart('chartCustomer');
   if (customerChart) customerChart.setOption({
     tooltip: Object.assign({ formatter: function(item) { return esc(item.name) + ': ' + item.value + ' 件 (' + item.percent.toFixed(1) + '%)'; } }, tip()),
-    series: [{ type: 'pie', radius: ['38%', '72%'], center: ['50%', '50%'], avoidLabelOverlap: true, stillShowZeroSum: false,
-      label: { show: false }, labelLine: { show: false },
+    series: [{ type: 'pie', radius: ['25%', '60%'], center: ['50%', '50%'], avoidLabelOverlap: true, stillShowZeroSum: false,
+      label: { show: true, position: 'outside', formatter: '{b}\n{d}%', color: '#163047', fontSize: 11, lineHeight: 16, alignTo: 'edge', edgeDistance: 6, bleedMargin: 4, overflow: 'truncate' },
+      labelLine: { show: true, length: 10, length2: 10, smooth: false }, labelLayout: { hideOverlap: false },
       data: customerData
     }]
   }, true);

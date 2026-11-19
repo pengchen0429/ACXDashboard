@@ -15,61 +15,23 @@ function tickClock() {
 }
 tickClock(); setInterval(tickClock, 1000);
 
-/* ================= 示例数据 ================= */
-var DATA = {
-  months: ['26-01','26-02','26-03','26-04','26-05','26-06','26-07','26-08','26-09','26-10'],
+var snapshot = null;
+var currentTab = 'overview';
+var defectOptions = [];
+var queryButton = document.getElementById('dpmuQuery');
+var status = document.getElementById('dpmuStatus');
+var busy = false;
+var optionsReady = false;
+var optionsVersion = 0;
+var confirmedTime = null;
 
-  overview: {
-    beltTypes: ['平带','松紧带','织带','绳带','提花带'],
-    beltDPMU: [1200, 1850, 980, 2100, 1560],
-    totalDPMU: 1650,
-    monthlyTrend: [2100, 1980, 1850, 1920, 1780, 1650, 1720, 1680, 1590, 1650],
-    dyeMachines: ['1#染机','2#染机','3#染机','4#染机','5#染机'],
-    dyeDPMU: [1800, 1500, 2200, 1650, 1900],
-    dyeProd: [12.0, 15.0, 8.0, 13.5, 10.0],
-    defectTypes: ['色差','断经','断纬','色斑','跳纱','油污','缩水不良','起毛'],
-    defectDPMU: [420, 380, 310, 280, 220, 180, 150, 110],
-    scrapMonthly: [120, 98, 85, 92, 78, 65, 72, 68, 55, 60],
-    dyeProdMonthly: [45, 48, 42, 46, 50, 47, 52, 49, 53, 51],
-    beltProd: [25, 18, 32, 12, 15],
-    needleTypes: ['单针','双针'],
-    needleDPMU: [1450, 1780],
-    needleProd: [55, 47]
-  },
+function number(value, maximumFractionDigits) {
+  return value == null ? '—' : Number(value).toLocaleString('zh-CN', { maximumFractionDigits: maximumFractionDigits == null ? 0 : maximumFractionDigits });
+}
 
-  weaving: {
-    machines: ['1#织机','2#织机','3#织机','4#织机','5#织机','6#织机','7#织机','8#织机'],
-    machineDPMU: [1100, 1350, 980, 1500, 1200, 1680, 1050, 1420],
-    totalDPMU: 1280,
-    monthlyTrend: [1800, 1650, 1520, 1480, 1380, 1320, 1280, 1250, 1300, 1280],
-    machineProd: [8.0, 7.5, 9.2, 6.8, 8.5, 6.2, 9.5, 7.8],
-    defectTypes: ['断经','断纬','跳纱','稀密路','边不良','油污','幅宽不良'],
-    defectDPMU: [380, 310, 220, 180, 150, 120, 80],
-    scrapMonthly: [85, 72, 65, 68, 58, 52, 48, 45, 42, 40],
-    prodMonthly: [32, 34, 31, 33, 35, 34, 36, 35, 37, 36],
-    beltDPMU: [1100, 1580, 850, 1800, 1350],
-    beltProd: [22, 16, 28, 10, 13],
-    needleDPMU: [1150, 1480],
-    needleProd: [48, 41]
-  },
-
-  dyeing: {
-    machines: ['1#染机','2#染机','3#染机','4#染机','5#染机'],
-    machineDPMU: [1800, 1500, 2200, 1650, 1900],
-    totalDPMU: 1820,
-    monthlyTrend: [2400, 2200, 2100, 2050, 1950, 1880, 1820, 1780, 1850, 1820],
-    machineProd: [12.0, 15.0, 8.0, 13.5, 10.0],
-    defectTypes: ['色差','色斑','色花','缸差','缩水不良','手感不良'],
-    defectDPMU: [480, 350, 280, 220, 180, 120],
-    scrapMonthly: [65, 58, 52, 48, 42, 38, 35, 32, 28, 30],
-    prodMonthly: [45, 48, 42, 46, 50, 47, 52, 49, 53, 51],
-    beltDPMU: [1500, 2100, 1200, 2400, 1800],
-    beltProd: [20, 14, 25, 9, 12],
-    colorSystems: ['黑色系','白色系','红色系','蓝色系','绿色系'],
-    colorDPMU: [1650, 1920, 2100, 1780, 1550],
-    colorProd: [18, 15, 12, 16, 10]
-  }
-};
+function escapeText(value) {
+  return echarts.format.encodeHTML(String(value));
+}
 
 /* ================= 暗色主题通用配置 ================= */
 var AX = { color: '#9db8e0', fontSize: isMobile ? 10 : 11 };
@@ -106,30 +68,32 @@ function initChart(id, option) {
 /* 垂直柱状图 */
 function barOpt(title, cats, vals, color, unit) {
   var u = unit || '';
+  function formatValue(value) { return number(value, title.indexOf('DPMU') === -1 ? 6 : 0); }
   return {
     title: baseTitle(title),
     tooltip: Object.assign({ trigger: 'axis' }, TIP, {
       formatter: function(params) {
         if (!Array.isArray(params)) return '';
-        var s = params[0].axisValue + '<br/>';
+        if (!params.length) return '';
+        var s = escapeText(params[0].axisValue) + '<br/>';
         params.forEach(function(p) {
           if (p.componentType !== 'series' || p.value == null) return;
-          s += p.marker + p.seriesName + ': ' + Number(p.value).toFixed(0) + u + '<br/>';
+          s += p.marker + escapeText(p.seriesName) + ': ' + formatValue(p.value) + u + '<br/>';
         });
         return s;
       }
     }),
     grid: { top: isMobile ? '16%' : '18%', bottom: '12%', left: '3%', right: '3%', containLabel: true },
     xAxis: { type: 'category', data: cats,
-             axisLabel: Object.assign({}, AX, { interval: 0, rotate: cats.length > 6 ? 25 : 0 }),
+             axisLabel: Object.assign({}, AX, { interval: 0, width: 65, overflow: 'truncate', rotate: cats.length > 6 ? 25 : 0 }),
              axisLine: { lineStyle: { color: 'rgba(88,140,220,0.3)' } } },
-    yAxis: { type: 'value', axisLabel: AX, splitLine: SPLIT },
+    yAxis: { type: 'value', axisLabel: Object.assign({}, AX, { formatter: formatValue }), splitLine: SPLIT },
     series: [{
       name: title.replace(/各|DPMU|趋势|占自身产量/g,'').trim() || 'DPMU',
       type: 'bar', barMaxWidth: 26,
       itemStyle: { color: color || '#409cff', borderRadius: [3,3,0,0] },
       label: { show: true, position: 'top', color: '#9ec5ff', fontSize: 10,
-               formatter: function(p) { return Number(p.value).toFixed(0); } },
+               formatter: function(p) { return formatValue(p.value); } },
       data: vals
     }]
   };
@@ -143,13 +107,14 @@ function hbarOpt(title, cats, vals, color, unit) {
     tooltip: Object.assign({ trigger: 'axis' }, TIP, {
       formatter: function(params) {
         if (!Array.isArray(params)) return '';
+        if (!params.length) return '';
         var p = params[0];
         if (p.componentType !== 'series' || p.value == null) return '';
-        return p.name + '<br/>' + p.marker + 'DPMU: ' + Number(p.value).toFixed(0) + u;
+        return escapeText(p.name) + '<br/>' + p.marker + 'DPMU: ' + number(p.value) + u;
       }
     }),
-    grid: { top: isMobile ? '16%' : '18%', bottom: '6%', left: '3%', right: '10%', containLabel: true },
-    xAxis: { type: 'value', axisLabel: AX, splitLine: SPLIT },
+    grid: { top: isMobile ? '16%' : '18%', bottom: '6%', left: '3%', right: '22%', containLabel: true },
+    xAxis: { type: 'value', axisLabel: Object.assign({}, AX, { formatter: function(value) { return number(value); } }), splitLine: SPLIT },
     yAxis: { type: 'category', data: cats, inverse: true,
              axisLabel: Object.assign({}, AX, { width: 70, overflow: 'truncate' }),
              axisLine: { lineStyle: { color: 'rgba(88,140,220,0.3)' } } },
@@ -157,7 +122,7 @@ function hbarOpt(title, cats, vals, color, unit) {
       name: 'DPMU', type: 'bar', barMaxWidth: 16,
       itemStyle: { color: color || '#409cff', borderRadius: [0,3,3,0] },
       label: { show: true, position: 'right', color: '#9ec5ff', fontSize: 10,
-               formatter: function(p) { return Number(p.value).toFixed(0); } },
+               formatter: function(p) { return number(p.value); } },
       data: vals
     }]
   };
@@ -172,10 +137,11 @@ function lineOpt(title, months, vals, target, color, unit) {
     tooltip: Object.assign({ trigger: 'axis' }, TIP, {
       formatter: function(params) {
         if (!Array.isArray(params)) return '';
-        var s = params[0].axisValue + '<br/>';
+        if (!params.length) return '';
+        var s = escapeText(params[0].axisValue) + '<br/>';
         params.forEach(function(p) {
           if (p.componentType !== 'series' || p.value == null || !isFinite(p.value)) return;
-          s += p.marker + p.seriesName + ': ' + Number(p.value).toFixed(0) + u + '<br/>';
+          s += p.marker + escapeText(p.seriesName) + ': ' + number(p.value) + u + '<br/>';
         });
         return s;
       }
@@ -184,7 +150,7 @@ function lineOpt(title, months, vals, target, color, unit) {
     grid: { top: isMobile ? '16%' : '18%', bottom: '12%', left: '3%', right: '3%', containLabel: true },
     xAxis: { type: 'category', boundaryGap: false, data: months, axisLabel: AX,
              axisLine: { lineStyle: { color: 'rgba(88,140,220,0.3)' } } },
-    yAxis: { type: 'value', axisLabel: AX, splitLine: SPLIT },
+    yAxis: { type: 'value', axisLabel: Object.assign({}, AX, { formatter: function(value) { return number(value); } }), splitLine: SPLIT },
     series: [{
       name: 'DPMU', type: 'line', smooth: true, symbol: 'circle', symbolSize: 4,
       itemStyle: { color: c }, lineStyle: { width: 2.5 },
@@ -225,31 +191,32 @@ function gaugeOpt(title, value, maxVal) {
       pointer: { width: 4, length: '55%', itemStyle: { color: '#e8f2ff' } },
       axisTick: { distance: -18, length: 5, lineStyle: { color: 'rgba(157,184,224,0.5)', width: 1 } },
       splitLine: { distance: -22, length: 12, lineStyle: { color: 'rgba(157,184,224,0.5)', width: 2 } },
-      axisLabel: { distance: 26, color: '#7d9cc9', fontSize: isMobile ? 9 : 10 },
+      axisLabel: { distance: 26, color: '#7d9cc9', fontSize: isMobile ? 9 : 10, formatter: function(value) { return number(value); } },
       anchor: { show: true, size: 10, itemStyle: { color: '#409cff', borderColor: '#e8f2ff', borderWidth: 2 } },
       title: { show: false },
       detail: {
-        valueAnimation: true, formatter: '{value}',
+        valueAnimation: false, formatter: function() { return number(value); },
         color: '#e8f2ff', fontSize: isMobile ? 26 : 34, fontWeight: 700,
         offsetCenter: [0, '35%']
       },
-      data: [{ value: value }]
+      data: [{ value: value == null ? 0 : value }]
     }]
   };
 }
 
 /* 带产量标注的柱状图 */
 function barWithProdOpt(title, cats, dpmuVals, prodVals, color, prodUnit) {
-  var pu = prodUnit || '万米';
+  var pu = prodUnit || '原始数量';
   return {
     title: baseTitle(title),
     tooltip: Object.assign({ trigger: 'axis' }, TIP, {
       formatter: function(params) {
         if (!Array.isArray(params)) return '';
-        var s = params[0].axisValue + '<br/>';
+        if (!params.length) return '';
+        var s = escapeText(params[0].axisValue) + '<br/>';
         params.forEach(function(p) {
           if (p.componentType !== 'series' || p.value == null) return;
-          s += p.marker + p.seriesName + ': ' + Number(p.value).toFixed(0) + '<br/>';
+          s += p.marker + escapeText(p.seriesName) + ': ' + number(p.value, p.seriesName === 'DPMU' ? 0 : 6) + '<br/>';
         });
         return s;
       }
@@ -257,17 +224,17 @@ function barWithProdOpt(title, cats, dpmuVals, prodVals, color, prodUnit) {
     legend: { bottom: 0, left: 'center', textStyle: AX, itemWidth: 14 },
     grid: { top: isMobile ? '16%' : '18%', bottom: '18%', left: '3%', right: '3%', containLabel: true },
     xAxis: { type: 'category', data: cats,
-             axisLabel: Object.assign({}, AX, { interval: 0, rotate: cats.length > 5 ? 20 : 0 }),
+             axisLabel: Object.assign({}, AX, { interval: 0, width: 55, overflow: 'truncate', rotate: cats.length > 5 ? 20 : 0 }),
              axisLine: { lineStyle: { color: 'rgba(88,140,220,0.3)' } } },
     yAxis: [
-      { type: 'value', name: 'DPMU', nameTextStyle: { color: '#7d9cc9', fontSize: 10 }, axisLabel: AX, splitLine: SPLIT },
+      { type: 'value', name: 'DPMU', nameTextStyle: { color: '#7d9cc9', fontSize: 10 }, axisLabel: Object.assign({}, AX, { formatter: function(value) { return number(value); } }), splitLine: SPLIT },
       { type: 'value', name: '产量(' + pu + ')', nameTextStyle: { color: '#7d9cc9', fontSize: 10 }, axisLabel: AX, splitLine: { show: false } }
     ],
     series: [
       { name: 'DPMU', type: 'bar', yAxisIndex: 0, barMaxWidth: 22,
         itemStyle: { color: color || '#409cff', borderRadius: [3,3,0,0] },
-        label: { show: true, position: 'top', color: '#9ec5ff', fontSize: 10,
-                 formatter: function(p) { return Number(p.value).toFixed(0); } },
+        label: { show: cats.length <= 6, position: 'top', color: '#9ec5ff', fontSize: 10,
+                 formatter: function(p) { return number(p.value); } },
         data: dpmuVals },
       { name: '产量(' + pu + ')', type: 'bar', yAxisIndex: 1, barMaxWidth: 22,
         itemStyle: { color: 'rgba(250,200,88,0.5)', borderRadius: [3,3,0,0] },
@@ -279,82 +246,335 @@ function barWithProdOpt(title, cats, dpmuVals, prodVals, color, prodUnit) {
 
 /* ================= Tab 构建函数 ================= */
 
-function buildOverview() {
-  var d = DATA.overview;
-  initChart('chart1', barOpt('各带型 DPMU', d.beltTypes, d.beltDPMU, '#409cff'));
-  initChart('chart2', gaugeOpt('DPMU TOTAL', d.totalDPMU, 5000));
-  initChart('chart3', lineOpt('各月 DPMU 趋势', DATA.months, d.monthlyTrend, 1500, '#b28dff'));
-  initChart('chart4', hbarOpt('各染机 DPMU 占自身产量', d.dyeMachines, d.dyeDPMU, '#34d97e'));
-  initChart('chart5', hbarOpt('各疵点名 DPMU', d.defectTypes, d.defectDPMU, '#fac858'));
-  initChart('chart6', barOpt('报废数量（月度）', DATA.months, d.scrapMonthly, '#ff6b6b', ' 件'));
-  initChart('chart7', barOpt('染色报产（万米/月）', DATA.months, d.dyeProdMonthly, '#ff9f43', ' 万米'));
-  initChart('chart8', barWithProdOpt('各带型 DPMU 占自身产量', d.beltTypes, d.beltDPMU, d.beltProd, '#409cff'));
-  initChart('chart9', barWithProdOpt('单双针 DPMU 占自身产量', d.needleTypes, d.needleDPMU, d.needleProd, '#b28dff'));
+function renderCharts(message) {
+  disposeCharts();
+  if (!snapshot) {
+    for (var index = 1; index <= 9; index++) {
+      initChart('chart' + index, { title: baseTitle(message || '待查询') });
+    }
+    return;
+  }
+  var d = snapshot;
+  var scope = { overview: '总览', weaving: '织造', dyeing: '染色' }[d.filters.tab];
+  function topDpmu(rows) {
+    return rows.slice().sort(function(first, second) {
+      if (first.dpmu == null) return second.dpmu == null ? 0 : 1;
+      if (second.dpmu == null) return -1;
+      return second.dpmu - first.dpmu;
+    }).slice(0, 10);
+  }
+  var areas = d.areas.slice(0, 10);
+  var lines = topDpmu(d.lines);
+  var products = d.products.slice(0, 10);
+  var categories = d.categories.slice(0, 10);
+  var defects = topDpmu(d.defects);
+  function values(rows, key) { return rows.map(function(row) { return row[key]; }); }
+  initChart('chart1', barOpt('各区域 DPMU', values(areas, 'name'), values(areas, 'dpmu'), '#409cff'));
+  initChart('chart2', gaugeOpt(scope + ' DPMU TOTAL', d.total.dpmu, Math.max(0.1, (d.total.dpmu || 0) * 2)));
+  initChart('chart3', lineOpt('各月 DPMU 趋势', values(d.months, 'name'), values(d.months, 'dpmu'), null, '#b28dff'));
+  initChart('chart4', hbarOpt('产线 DPMU（前10）', values(lines, 'name'), values(lines, 'dpmu'), '#34d97e'));
+  initChart('chart5', hbarOpt('疵点 DPMU（前10）', values(defects, 'name'), values(defects, 'dpmu'), '#fac858'));
+  initChart('chart6', barOpt('报废数量（月度）', values(d.months, 'name'), values(d.months, 'scrap'), '#ff6b6b'));
+  initChart('chart7', barOpt('产量（月度）', values(d.months, 'name'), values(d.months, 'production'), '#ff9f43'));
+  initChart('chart8', barWithProdOpt('产品 DPMU / 产量（报废量前10）', values(products, 'name'), values(products, 'dpmu'), values(products, 'production'), '#409cff'));
+  initChart('chart9', hbarOpt('疵点分类DPMU', values(categories, 'name'), values(categories, 'dpmu'), '#b28dff'));
 }
 
-function buildWeaving() {
-  var d = DATA.weaving;
-  initChart('chart1', barOpt('各织机 DPMU', d.machines, d.machineDPMU, '#409cff'));
-  initChart('chart2', gaugeOpt('织造 DPMU TOTAL', d.totalDPMU, 5000));
-  initChart('chart3', lineOpt('各月织造 DPMU 趋势', DATA.months, d.monthlyTrend, 1200, '#409cff'));
-  initChart('chart4', hbarOpt('各织机 DPMU 占自身产量', d.machines, d.machineDPMU, '#34d97e'));
-  initChart('chart5', hbarOpt('织造各疵点 DPMU', d.defectTypes, d.defectDPMU, '#fac858'));
-  initChart('chart6', barOpt('织造报废数量（月度）', DATA.months, d.scrapMonthly, '#ff6b6b', ' 件'));
-  initChart('chart7', barOpt('织造报产（万米/月）', DATA.months, d.prodMonthly, '#ff9f43', ' 万米'));
-  initChart('chart8', barWithProdOpt('各带型 DPMU（织造）', DATA.overview.beltTypes, d.beltDPMU, d.beltProd, '#409cff'));
-  initChart('chart9', barWithProdOpt('单双针 DPMU（织造）', DATA.overview.needleTypes, d.needleDPMU, d.needleProd, '#b28dff'));
-}
+function multiSelect(id, onChange, onComplete) {
+  var root = document.getElementById(id);
+  var search = root.querySelector('input[type="search"]');
+  var list = root.querySelector('.dpmu-multi-options');
+  var summary = root.querySelector('summary');
+  var selected = new Set();
+  var options = [];
+  var dirty = false;
 
-function buildDyeing() {
-  var d = DATA.dyeing;
-  initChart('chart1', barOpt('各染机 DPMU', d.machines, d.machineDPMU, '#ff9f43'));
-  initChart('chart2', gaugeOpt('染色 DPMU TOTAL', d.totalDPMU, 5000));
-  initChart('chart3', lineOpt('各月染色 DPMU 趋势', DATA.months, d.monthlyTrend, 1500, '#ff9f43'));
-  initChart('chart4', hbarOpt('各染机 DPMU 占自身产量', d.machines, d.machineDPMU, '#34d97e'));
-  initChart('chart5', hbarOpt('染色各疵点 DPMU', d.defectTypes, d.defectDPMU, '#fac858'));
-  initChart('chart6', barOpt('染色报废数量（月度）', DATA.months, d.scrapMonthly, '#ff6b6b', ' 件'));
-  initChart('chart7', barOpt('染色报产（万米/月）', DATA.months, d.prodMonthly, '#ff9f43', ' 万米'));
-  initChart('chart8', barWithProdOpt('各带型 DPMU（染色）', DATA.overview.beltTypes, d.beltDPMU, d.beltProd, '#ff9f43'));
-  initChart('chart9', barWithProdOpt('各色系 DPMU 占自身产量', d.colorSystems, d.colorDPMU, d.colorProd, '#b28dff'));
-}
-
-/* ================= Tab 切换 ================= */
-var currentTab = 'overview';
-var tabTimer;
-
-function switchTab(tab) {
-  if (tab === currentTab && chartInstances.length > 0) return;
-  currentTab = tab;
-
-  // 更新按钮样式
-  page.querySelectorAll('.tab-btn').forEach(function(btn) {
-    btn.classList.toggle('active', btn.dataset.tab === tab);
-    btn.setAttribute('aria-pressed', String(btn.dataset.tab === tab));
+  function matching() {
+    var term = search.value.trim().toLocaleLowerCase();
+    return options.filter(function(value) { return value.toLocaleLowerCase().includes(term); });
+  }
+  function updateLabel() {
+    summary.textContent = selected.size ? '已选 ' + selected.size + ' 项' : '全部';
+    summary.title = selected.size ? Array.from(selected).join('、') : '全部';
+    root.querySelector('.dpmu-multi-count').textContent = '已选 ' + selected.size + ' / ' + options.length;
+  }
+  function render() {
+    list.replaceChildren();
+    var visible = matching();
+    visible.forEach(function(value) {
+      var label = document.createElement('label');
+      label.className = 'dpmu-multi-option';
+      var checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.value = value;
+      checkbox.checked = selected.has(value);
+      var text = document.createElement('span');
+      text.textContent = value;
+      label.append(checkbox, text);
+      checkbox.addEventListener('change', function() {
+        if (checkbox.checked) selected.add(value);
+        else selected.delete(value);
+        dirty = true;
+        updateLabel();
+        if (onChange) onChange();
+      });
+      list.append(label);
+    });
+    if (!visible.length) list.textContent = options.length ? '无匹配项' : '暂无选项';
+    updateLabel();
+  }
+  search.addEventListener('input', render);
+  root.querySelector('[data-action="all"]').addEventListener('click', function() {
+    matching().forEach(function(value) { selected.add(value); });
+    dirty = true;
+    render();
+    if (onChange) onChange();
   });
-
-  // 淡出 → 销毁 → 重建 → 淡入
-  var grid = document.getElementById('chartGrid');
-  grid.classList.add('fading');
-  clearTimeout(tabTimer);
-  tabTimer = setTimeout(function() {
-    disposeCharts();
-    if (tab === 'overview') buildOverview();
-    else if (tab === 'weaving') buildWeaving();
-    else if (tab === 'dyeing') buildDyeing();
-    grid.classList.remove('fading');
-  }, 200);
+  function reset(silent) {
+    selected.clear();
+    search.value = '';
+    render();
+    dirty = silent !== true;
+    if (silent !== true && onChange) onChange();
+  }
+  root.querySelector('[data-action="reset"]').addEventListener('click', reset);
+  root.querySelector('[data-action="confirm"]').addEventListener('click', function() { root.open = false; });
+  root.addEventListener('toggle', function() {
+    if (!root.open) {
+      if (dirty && onComplete) {
+        dirty = false;
+        onComplete();
+      }
+      return;
+    }
+    page.querySelectorAll('.dpmu-multi').forEach(function(other) {
+      if (other !== root) other.open = false;
+    });
+    search.focus();
+  });
+  root.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') {
+      root.open = false;
+      summary.focus();
+    }
+  });
+  return {
+    values: function() { return Array.from(selected); },
+    commit: function() { dirty = false; root.open = false; },
+    setLoading: function(message) {
+      list.textContent = message;
+      root.querySelectorAll('input, button').forEach(function(control) { control.disabled = true; });
+      root.setAttribute('aria-busy', 'true');
+    },
+    setOptions: function(values) {
+      options = Array.from(new Set(values)).sort();
+      selected = new Set(Array.from(selected).filter(function(value) { return options.includes(value); }));
+      render();
+      root.querySelectorAll('input, button').forEach(function(control) { control.disabled = false; });
+      root.setAttribute('aria-busy', 'false');
+    },
+    reset: reset
+  };
 }
 
-/* ================= 初始化 ================= */
-page.querySelectorAll('.tab-btn').forEach(function(btn) {
-  btn.addEventListener('click', function() {
-    switchTab(btn.dataset.tab);
+var categorySelect = multiSelect('dpmuCategory', function() {
+  optionsReady = false;
+  defectSelect.setLoading('请先确认疵点分类');
+}, loadOptions);
+var defectSelect = multiSelect('dpmuDefect', function() { optionsReady = false; }, loadOptions);
+
+function filterParameters() {
+  var start = document.getElementById('dpmuStartTime').value;
+  var end = document.getElementById('dpmuEndTime').value;
+  if (!confirmedTime || page.querySelector('.dpmu-time-range').classList.contains('is-pending')
+      || start !== confirmedTime.start || end !== confirmedTime.end) return null;
+  var params = new URLSearchParams({ start_time: confirmedTime.start, end_time: confirmedTime.end, tab: currentTab });
+  [['category', categorySelect], ['defect', defectSelect]].forEach(function(pair) {
+    pair[1].values().forEach(function(value) { params.append(pair[0], value); });
+  });
+  return params;
+}
+
+document.addEventListener('click', function(event) {
+  page.querySelectorAll('.dpmu-multi[open]').forEach(function(root) {
+    if (!root.contains(event.target)) root.open = false;
   });
 });
-document.getElementById('dpmuQuery').addEventListener('click', function() {
-  window.alert('\u7b5b\u9009\u529f\u80fd\u9700\u63a5\u5165\u540e\u7aef\u6570\u636e\u6e90\u540e\u751f\u6548');
+
+async function fetchJSON(url, params) {
+  var controller = new AbortController();
+  var timer = setTimeout(function() { controller.abort(); }, 60000);
+  try {
+    var response = await fetch(url + (params ? '?' + params.toString() : ''), {
+      signal: controller.signal, credentials: 'same-origin', headers: { Accept: 'application/json' }
+    });
+    if (response.redirected || !(response.headers.get('Content-Type') || '').includes('application/json')) {
+      throw new Error('登录状态或访问权限已变更，请刷新页面。');
+    }
+    var data = await response.json();
+    if (!response.ok) throw new Error(data.error || '查询失败，请重试。');
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function loadOptions() {
+  var version = ++optionsVersion;
+  optionsReady = false;
+  categorySelect.commit();
+  defectSelect.commit();
+  var params = filterParameters();
+  var filterStatus = document.getElementById('dpmuFilterStatus');
+  if (!params) {
+    categorySelect.setLoading('请先选择有效时间');
+    defectSelect.setLoading('请先选择有效时间');
+    filterStatus.textContent = '请先确认时间范围';
+    queryButton.disabled = false;
+    queryButton.textContent = '查 询';
+    queryButton.onclick = query;
+    return false;
+  }
+  queryButton.disabled = true;
+  queryButton.textContent = '加载筛选项';
+  filterStatus.textContent = '正在查询筛选项…';
+  categorySelect.setLoading('加载中');
+  defectSelect.setLoading('加载中');
+  try {
+    var data = await fetchJSON(page.dataset.optionsUrl, params);
+    if (version !== optionsVersion) return false;
+    defectOptions = data.defects;
+    categorySelect.setOptions(data.categories);
+    defectSelect.setOptions(defectOptions.map(function(item) { return item.name; }));
+    optionsReady = true;
+    filterStatus.textContent = data.defects.length ? '' : '当前条件无疵点记录';
+    queryButton.onclick = query;
+    queryButton.textContent = '查 询';
+    return true;
+  } catch (error) {
+    if (version !== optionsVersion) return false;
+    filterStatus.textContent = error.name === 'AbortError' ? '筛选项加载超时' : error.message;
+    categorySelect.setLoading('加载失败，请重试');
+    defectSelect.setLoading('加载失败，请重试');
+    queryButton.onclick = loadOptions;
+    queryButton.textContent = '重试筛选项';
+    return false;
+  } finally {
+    if (version === optionsVersion) queryButton.disabled = busy;
+  }
+}
+
+async function query() {
+  if (busy) return;
+  var start = document.getElementById('dpmuStartTime');
+  var end = document.getElementById('dpmuEndTime');
+  if (!start.reportValidity() || !end.reportValidity()) return;
+  if (start.value > end.value) {
+    status.textContent = '开始时间不得晚于结束时间';
+    return;
+  }
+  if (!optionsReady && !(await loadOptions())) return;
+  var params = filterParameters();
+  if (!params) return;
+  busy = true;
+  queryButton.disabled = true;
+  page.querySelectorAll('.tab-btn').forEach(function(button) { button.disabled = true; });
+  document.getElementById('chartGrid').setAttribute('aria-busy', 'true');
+  status.textContent = '查询中…';
+  snapshot = null;
+  renderCharts('加载中');
+  try {
+    snapshot = await fetchJSON(page.dataset.summaryUrl, params);
+    renderCharts();
+    status.textContent = snapshot.start_time.replace('T', ' ') + ' 至 ' + snapshot.end_time.replace('T', ' ')
+      + ' | 产量 ' + number(snapshot.total.production, 6) + ' / 报废 ' + number(snapshot.total.scrap, 6);
+    if (!snapshot.total.production && !snapshot.total.scrap) {
+      status.textContent += ' | 无数据';
+      snapshot = null;
+      renderCharts('无数据');
+    }
+  } catch (error) {
+    snapshot = null;
+    status.textContent = error.name === 'AbortError' ? '查询超时，请缩小时间范围后重试。' : error.message;
+    renderCharts('查询失败');
+  } finally {
+    busy = false;
+    queryButton.disabled = false;
+    page.querySelectorAll('.tab-btn').forEach(function(button) { button.disabled = false; });
+    document.getElementById('chartGrid').setAttribute('aria-busy', 'false');
+  }
+}
+
+page.querySelectorAll('.tab-btn').forEach(function(button) {
+  button.addEventListener('click', function() {
+    if (busy || currentTab === button.dataset.tab) return;
+    currentTab = button.dataset.tab;
+    page.querySelectorAll('.tab-btn').forEach(function(item) {
+      item.classList.toggle('active', item.dataset.tab === currentTab);
+      item.setAttribute('aria-pressed', String(item.dataset.tab === currentTab));
+    });
+    snapshot = null;
+    status.textContent = '待查询';
+    renderCharts();
+    loadOptions();
+  });
 });
-buildOverview();
+function resetFilters() {
+  var today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(new Date());
+  document.getElementById('dpmuStartTime').value = today.slice(0, 7) + '-01T08:30';
+  document.getElementById('dpmuEndTime').value = today + 'T08:30';
+  confirmedTime = { start: document.getElementById('dpmuStartTime').value,
+    end: document.getElementById('dpmuEndTime').value };
+  document.getElementById('dpmuEndTime').setCustomValidity('');
+  page.querySelector('.dpmu-time-range').classList.remove('is-pending');
+  document.getElementById('dpmuTimeState').textContent = '已确认';
+  categorySelect.reset(true);
+  defectSelect.reset(true);
+  loadOptions();
+}
+document.getElementById('dpmuReset').addEventListener('click', resetFilters);
+document.getElementById('dpmuTimeConfirm').addEventListener('click', async function() {
+  var start = document.getElementById('dpmuStartTime');
+  var end = document.getElementById('dpmuEndTime');
+  end.setCustomValidity('');
+  if (!start.reportValidity() || !end.reportValidity()) return;
+  if (start.value > end.value) {
+    end.setCustomValidity('结束时间不得早于开始时间');
+    end.reportValidity();
+    return;
+  }
+  confirmedTime = { start: start.value, end: end.value };
+  page.querySelector('.dpmu-time-range').classList.remove('is-pending');
+  document.getElementById('dpmuTimeState').textContent = '已确认';
+  categorySelect.reset(true);
+  defectSelect.reset(true);
+  var button = document.getElementById('dpmuTimeConfirm');
+  button.disabled = true;
+  try {
+    await loadOptions();
+  } finally {
+    button.disabled = false;
+  }
+});
+['dpmuStartTime', 'dpmuEndTime'].forEach(function(id) {
+  document.getElementById(id).addEventListener('input', function() {
+    document.getElementById('dpmuEndTime').setCustomValidity('');
+    ++optionsVersion;
+    optionsReady = false;
+    categorySelect.commit();
+    defectSelect.commit();
+    categorySelect.setLoading('请先确认时间');
+    defectSelect.setLoading('请先确认时间');
+    page.querySelector('.dpmu-time-range').classList.add('is-pending');
+    document.getElementById('dpmuTimeState').textContent = '待确认';
+    document.getElementById('dpmuFilterStatus').textContent = '时间范围待确认';
+    queryButton.disabled = busy;
+    queryButton.textContent = '查 询';
+    queryButton.onclick = query;
+  });
+});
+resetFilters();
+renderCharts();
 
 /* ================= 自适应 ================= */
 function resizeCharts() {
@@ -362,12 +582,7 @@ function resizeCharts() {
   if (nowMobile !== isMobile) {
     isMobile = nowMobile;
     AX.fontSize = isMobile ? 10 : 11;
-    clearTimeout(tabTimer);
-    disposeCharts();
-    if (currentTab === 'overview') buildOverview();
-    else if (currentTab === 'weaving') buildWeaving();
-    else if (currentTab === 'dyeing') buildDyeing();
-    document.getElementById('chartGrid').classList.remove('fading');
+    renderCharts();
   }
   chartInstances.forEach(function(c) { c.resize(); });
 }

@@ -94,10 +94,7 @@
     </div>
     <div class="chart-card">
       <div class="chart-card-title">客户投诉分布</div>
-      <div class="pie-layout">
-        <div class="chart-box" id="chartCustomer" data-chart="true"></div>
-        <div class="pie-details" id="customerDetails" aria-label="客户投诉明细"><p class="pie-empty">暂无查询结果</p></div>
-      </div>
+      <div class="chart-box" id="chartCustomer" data-chart="true"></div>
     </div>
     <div class="chart-card">
       <div class="chart-card-title">投诉等级 × 处理状态</div>
@@ -257,5 +254,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/complaint.js' %}?v=detail-photos-1"></script>
+<script src="{% static 'js/complaint.js' %}?v=customer-pie-labels-2"></script>
 {% endblock %}

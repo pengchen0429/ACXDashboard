@@ -4,11 +4,11 @@
 {% block title %}DPMU 质量监控大屏 - CNSX数据看板{% endblock %}
 
 {% block head_extra %}
-<link rel="stylesheet" href="{% static 'css/dpmu.css' %}">
+<link rel="stylesheet" href="{% static 'css/dpmu.css' %}?v=no-tabs-1">
 {% endblock %}
 
 {% block content %}
-<div class="dpmu-page">
+<div class="dpmu-page" data-options-url="{% url 'dpmu-options' %}" data-summary-url="{% url 'dpmu-data' %}">
 <div class="page-wrapper">
 
   <!-- 顶部标题栏 -->
@@ -18,79 +18,95 @@
       <div class="dash-sub">DEFECTS PER MILLION UNITS · 织造 / 染色全流程质量监控</div>
     </div>
     <div class="dash-meta">
-      <span class="demo-badge">示例数据 · 模板演示</span>
+      <span class="demo-badge">MESAQ</span>
       <span class="live-dot"></span><span class="live-clock" id="liveClock">--:--:--</span><br>
-      <span class="data-cutoff">数据截至 2026-10-19</span>
+      <span class="data-cutoff" id="dpmuStatus" role="status" aria-live="polite">待查询</span>
     </div>
-  </div>
-
-  <!-- Tab 按钮栏 -->
-  <div class="tab-bar">
-    <button class="tab-btn active" type="button" data-tab="overview" aria-pressed="true">总 览</button>
-    <button class="tab-btn" type="button" data-tab="weaving" aria-pressed="false">织 造</button>
-    <button class="tab-btn" type="button" data-tab="dyeing" aria-pressed="false">染 色</button>
   </div>
 
   <!-- 筛选栏 -->
   <div class="filter-bar">
-    <div class="filter-group">
-      <label for="dpmuStartTime">开始时间</label>
-      <input type="datetime-local" id="dpmuStartTime" name="start_time" step="60" value="2026-01-01T00:00" />
-    </div>
-    <span class="filter-sep">—</span>
-    <div class="filter-group">
-      <label for="dpmuEndTime">结束时间</label>
-      <input type="datetime-local" id="dpmuEndTime" name="end_time" step="60" value="2026-10-19T23:59" />
-    </div>
-    <div class="filter-group">
-      <label>疵点类型</label>
-      <select>
-        <option>全部</option>
-        <option>色差</option><option>断经</option><option>断纬</option>
-        <option>色斑</option><option>跳纱</option><option>油污</option>
-        <option>缩水不良</option><option>起毛</option>
-      </select>
+    <div class="dpmu-time-range" role="group" aria-label="时间范围">
+      <div class="filter-group dpmu-time-field">
+        <label for="dpmuStartTime">开始时间</label>
+        <input type="datetime-local" id="dpmuStartTime" name="start_time" step="60" required />
+      </div>
+      <span class="dpmu-time-separator" aria-hidden="true">至</span>
+      <div class="filter-group dpmu-time-field">
+        <label for="dpmuEndTime">结束时间</label>
+        <input type="datetime-local" id="dpmuEndTime" name="end_time" step="60" required />
+      </div>
+      <div class="dpmu-time-actions">
+        <span class="dpmu-time-state" id="dpmuTimeState" role="status" aria-live="polite">已确认</span>
+        <button type="button" class="dpmu-time-confirm" id="dpmuTimeConfirm" aria-label="确认时间范围">确定</button>
+      </div>
     </div>
     <div class="filter-group">
-      <label>产品名称</label>
-      <select>
-        <option>全部</option>
-        <option>产品A-高强度织带</option>
-        <option>产品B-弹性松紧带</option>
-        <option>产品C-提花装饰带</option>
-        <option>产品D-工业绳带</option>
-      </select>
+      <span class="filter-label" id="dpmuCategoryLabel">疵点分类</span>
+      <details class="dpmu-multi" id="dpmuCategory" aria-labelledby="dpmuCategoryLabel">
+        <summary aria-label="选择疵点分类">全部</summary>
+        <div class="dpmu-multi-panel">
+          <input type="search" class="dpmu-multi-search" placeholder="查询疵点分类" aria-label="查询疵点分类" />
+          <div class="dpmu-multi-actions">
+            <button type="button" data-action="all">全选</button>
+            <button type="button" data-action="reset">重置</button>
+            <button type="button" data-action="confirm">确定</button>
+            <span class="dpmu-multi-count" aria-live="polite"></span>
+          </div>
+          <div class="dpmu-multi-options"></div>
+        </div>
+      </details>
     </div>
     <div class="filter-group">
-      <label>带型</label>
-      <select>
-        <option>全部</option>
-        <option>平带</option><option>松紧带</option>
-        <option>织带</option><option>绳带</option><option>提花带</option>
-      </select>
+      <span class="filter-label" id="dpmuDefectLabel">疵点名称</span>
+      <details class="dpmu-multi" id="dpmuDefect" aria-labelledby="dpmuDefectLabel">
+        <summary aria-label="选择疵点名称">全部</summary>
+        <div class="dpmu-multi-panel">
+          <input type="search" class="dpmu-multi-search" placeholder="查询疵点名称" aria-label="查询疵点名称" />
+          <div class="dpmu-multi-actions">
+            <button type="button" data-action="all">全选</button>
+            <button type="button" data-action="reset">重置</button>
+            <button type="button" data-action="confirm">确定</button>
+            <span class="dpmu-multi-count" aria-live="polite"></span>
+          </div>
+          <div class="dpmu-multi-options"></div>
+        </div>
+      </details>
     </div>
     <button class="filter-btn" type="button" id="dpmuQuery">查 询</button>
+    <button class="filter-btn dpmu-reset" type="button" id="dpmuReset">重 置</button>
+    <span id="dpmuFilterStatus" class="filter-status" role="status" aria-live="polite"></span>
   </div>
 
   <!-- 图表网格 -->
   <div class="chart-grid" id="chartGrid">
+    <!-- chart1 | 各区域 DPMU | 桌面第1行左侧：织造、染色对比 -->
     <div class="card"><div class="chart-container" id="chart1" data-chart="true"></div></div>
+    <!-- chart2 | 总览 DPMU TOTAL | 桌面第1行中间：总览仪表盘 -->
     <div class="card"><div class="chart-container" id="chart2" data-chart="true"></div></div>
+    <!-- chart3 | 各月 DPMU 趋势 | 桌面第1行右侧：月度比值折线图 -->
     <div class="card"><div class="chart-container" id="chart3" data-chart="true"></div></div>
+    <!-- chart4 | 产线 DPMU（前10） | 桌面第2行左侧：按DPMU降序排名 -->
     <div class="card"><div class="chart-container" id="chart4" data-chart="true"></div></div>
+    <!-- chart5 | 疵点 DPMU（前10） | 桌面第2行中间：按DPMU降序排名 -->
     <div class="card"><div class="chart-container" id="chart5" data-chart="true"></div></div>
+    <!-- chart6 | 报废数量（月度） | 桌面第2行右侧：每月报废合计 -->
     <div class="card"><div class="chart-container" id="chart6" data-chart="true"></div></div>
+    <!-- chart7 | 产量（月度） | 桌面第3行左侧：每月产量合计 -->
     <div class="card"><div class="chart-container" id="chart7" data-chart="true"></div></div>
+    <!-- chart8 | 产品 DPMU / 产量（报废量前10） | 桌面第3行中间：产品比值与产量双轴图 -->
     <div class="card"><div class="chart-container" id="chart8" data-chart="true"></div></div>
+    <!-- chart9 | 疵点分类DPMU | 桌面第3行右侧：疵点分类对比 -->
     <div class="card"><div class="chart-container" id="chart9" data-chart="true"></div></div>
   </div>
 
-  <div class="footer-note">※ 本页所有数值均为演示用示例数据，非真实生产数据；筛选功能需接入后端数据源后生效</div>
+  <div class="footer-note">DPMU = 报废数量 ÷ 产量 × 1,000,000；WEAV 为织造，DYE 为染色；过程不合格报废各分一半；产量按 08:30 生产日归属；无产量时显示“—”。</div>
 </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script src="{% static 'js/echarts.min.js' %}"></script>
-<script src="{% static 'js/dpmu.js' %}"></script>
+<script src="{% static 'js/light-theme.js' %}?v=1"></script>
+<script src="{% static 'js/dpmu.js' %}?v=dpmu-integer-1"></script>
 {% endblock %}

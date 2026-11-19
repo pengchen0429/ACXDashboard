@@ -86,6 +86,9 @@
     border-color: #409cff; box-shadow: 0 0 0 2px rgba(64,156,255,.2);
   }
   .dpmu-page .filter-group select option { background: #0a1934; color: #d7e6ff; }
+  .dpmu-page .filter-group select { width: 170px; min-width: 0; text-overflow: ellipsis; }
+  .dpmu-page .dash-meta { max-width: 100%; overflow-wrap: anywhere; }
+  .dpmu-page button:disabled { opacity: .6; cursor: wait; }
   .dpmu-page .filter-btn {
     padding: 6px 20px; border-radius: 6px;
     background: linear-gradient(135deg, #409cff, #2d7cd6);
@@ -115,6 +118,71 @@
 
   .dpmu-page .footer-note { margin-top: 14px; font-size: 12px; color: #5f7ba6; text-align: center; letter-spacing: 1px; }
 
+  .dpmu-page .filter-label { font-size: 12px; color: #637184; white-space: nowrap; }
+  .dpmu-page .filter-status { font-size: 12px; color: #637184; overflow-wrap: anywhere; }
+  .dpmu-page .dpmu-multi { position: relative; width: 180px; min-width: 0; }
+  .dpmu-page .dpmu-multi summary {
+    padding: 6px 12px; border: 1px solid #d5dde7; border-radius: 6px;
+    background: #fff; color: #344356; font-size: 12px; cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .dpmu-page .dpmu-multi summary:focus-visible { outline: 2px solid #2463c5; outline-offset: 2px; }
+  .dpmu-page .dpmu-multi-panel {
+    position: absolute; z-index: 20; top: calc(100% + 6px); left: 0;
+    width: 320px; max-width: calc(100vw - 80px); padding: 10px;
+    background: #fff; color: #344356; border: 1px solid #d5dde7; border-radius: 6px;
+    box-shadow: 0 6px 20px #202b3820;
+  }
+  .dpmu-page #dpmuDefect .dpmu-multi-panel { left: auto; right: 0; }
+  .dpmu-page .dpmu-multi-search {
+    width: 100%; padding: 7px 9px; border: 1px solid #d5dde7;
+    border-radius: 4px; background: #fff; color: #344356; font-size: 12px;
+  }
+  .dpmu-page .dpmu-multi-actions { display: flex; align-items: center; gap: 8px; padding: 8px 0; }
+  .dpmu-page .dpmu-multi-actions button {
+    padding: 4px 10px; background: #eef3fb; color: #2459a8;
+    border: 1px solid #d5dde7; border-radius: 4px; font-size: 12px; cursor: pointer;
+  }
+  .dpmu-page .dpmu-multi-count { margin-left: auto; color: #637184; font-size: 12px; }
+  .dpmu-page .dpmu-multi-options { max-height: 240px; overflow-y: auto; font-size: 12px; }
+  .dpmu-page .filter-group label.dpmu-multi-option {
+    display: flex; align-items: flex-start; gap: 8px; width: 100%;
+    padding: 7px 4px; color: #344356; white-space: normal; letter-spacing: 0; cursor: pointer;
+  }
+  .dpmu-page .dpmu-multi-option:hover { background: #eef3fb; }
+  .dpmu-page .dpmu-multi-option input { flex-shrink: 0; margin-top: 2px; accent-color: #2463c5; }
+  .dpmu-page .dpmu-multi-option span { overflow-wrap: anywhere; min-width: 0; }
+  html .light-theme .dpmu-page .dpmu-reset { background: #eef1f5; color: #526174; border: 1px solid #d5dde7; }
+
+  .dpmu-page .dpmu-time-range {
+    display: grid; grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr) 60px;
+    align-items: end; gap: 10px; width: 540px; max-width: 100%; padding: 10px 12px;
+    background: #fff; border: 1px solid #d5dde7; border-radius: 6px;
+  }
+  .dpmu-page .dpmu-time-range:focus-within { border-color: #2463c5; }
+  .dpmu-page .dpmu-time-range.is-pending { border-color: #c49332; }
+  .dpmu-page .dpmu-time-range .dpmu-time-field {
+    display: flex; flex-direction: column; align-items: stretch; gap: 5px; width: 100%;
+  }
+  .dpmu-page .dpmu-time-range .dpmu-time-field label {
+    width: auto; font-size: 11px; line-height: 14px; letter-spacing: 0; color: #637184;
+  }
+  .dpmu-page .dpmu-time-range .dpmu-time-field input {
+    width: 100%; min-width: 0; height: 34px; padding: 6px 8px;
+    border: 1px solid #d5dde7; border-radius: 4px; background: #fff;
+    color: #202b38; color-scheme: light; font-size: 12px; font-variant-numeric: tabular-nums;
+  }
+  .dpmu-page .dpmu-time-separator { align-self: end; line-height: 34px; text-align: center; color: #8793a3; font-size: 12px; }
+  .dpmu-page .dpmu-time-actions { display: flex; flex-direction: column; gap: 5px; }
+  .dpmu-page .dpmu-time-state { line-height: 14px; font-size: 11px; text-align: center; color: #637184; white-space: nowrap; }
+  .dpmu-page .is-pending .dpmu-time-state { color: #996312; }
+  .dpmu-page .dpmu-time-confirm {
+    height: 34px; padding: 0 12px; border: 1px solid #2463c5; border-radius: 4px;
+    background: #edf3fd; color: #2459a8; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .dpmu-page .dpmu-time-confirm:hover { background: #dfebfc; }
+  .dpmu-page .dpmu-time-confirm:focus-visible { outline: 2px solid #2463c5; outline-offset: 2px; }
+
   @container dpmu (max-width: 1200px) {
     .dpmu-page .chart-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
@@ -125,6 +193,20 @@
     .dpmu-page .chart-container { height: 280px; }
     .dpmu-page .tab-btn { padding: 8px 20px; font-size: 13px; }
     .dpmu-page .filter-bar { padding: 10px 12px; gap: 10px; }
+    .dpmu-page .filter-group { width: 100%; }
+    .dpmu-page .filter-group label { width: 56px; flex-shrink: 0; }
+    .dpmu-page .filter-label { width: 56px; flex-shrink: 0; }
+    .dpmu-page .dpmu-multi { flex: 1; width: 100%; }
+    .dpmu-page .dpmu-multi-panel { width: 100%; max-width: none; }
+    .dpmu-page .dpmu-multi-option { width: 100%; }
+    .dpmu-page .filter-group select,
+    .dpmu-page .filter-group input[type="datetime-local"] { width: 100%; flex: 1; min-width: 0; }
+    .dpmu-page .filter-sep { display: none; }
+    .dpmu-page .dpmu-time-range { width: 100%; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+    .dpmu-page .dpmu-time-separator { display: none; }
+    .dpmu-page .dpmu-time-actions { flex-direction: row; align-items: center; justify-content: flex-end; }
+    .dpmu-page .dpmu-time-state { margin-right: auto; text-align: left; }
+    .dpmu-page .dpmu-time-confirm { min-width: 76px; }
   }
 
   @media (min-width: 1201px) {
@@ -132,7 +214,7 @@
       display: grid;
       height: 100vh;
       height: 100dvh;
-      grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
       gap: 8px;
       padding: 10px 12px;
     }
