@@ -444,7 +444,7 @@ async function loadOptions() {
     var data = await fetchJSON(page.dataset.optionsUrl, params);
     if (version !== optionsVersion) return false;
     defectOptions = data.defects;
-    categorySelect.setOptions(data.categories);
+    categorySelect.setOptions(data.categories.filter(function(category) { return category !== '过程不合格'; }));
     defectSelect.setOptions(defectOptions.map(function(item) { return item.name; }));
     optionsReady = true;
     filterStatus.textContent = data.defects.length ? '' : '当前条件无疵点记录';
