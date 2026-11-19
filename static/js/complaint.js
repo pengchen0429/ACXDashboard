@@ -444,11 +444,13 @@ function renderValue(record, key, detailed) {
   if (value === null || value === undefined || value === '') return '—';
   if (key === 'reported_at' || key === 'completion_time') return esc(String(value).replace('T', ' ').slice(0, 19));
   if (key === 'defect_pictures') {
-    return String(value).split(/\r?\n/).map(function(reference) { return reference.trim(); }).filter(Boolean).map(function(reference, index) {
+    var pictures = String(value).split(/\r?\n/).map(function(reference) { return reference.trim(); }).filter(Boolean).map(function(reference, index) {
       var url = pictureUrl(reference);
+      if (url && detailed) return '<a class="detail-picture" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer" title="查看原图"><img src="' + esc(url) + '" alt="投诉照片 ' + (index + 1) + '" loading="lazy" decoding="async"></a>';
       if (url) return '<a href="' + esc(url) + '" title="' + esc(reference) + '" target="_blank" rel="noopener noreferrer">图片 ' + (index + 1) + '</a>';
-      return esc(reference);
+      return detailed ? '<span class="detail-picture-error">图片地址无效</span>' : esc(reference);
     }).join(' ');
+    return detailed ? '<span class="detail-pictures">' + pictures + '</span>' : pictures;
   }
   if (key === 'complaint_type') return '<span class="badge badge-level-' + esc(value) + '">' + esc(value) + '</span>';
   if (key === 'state') return '<span class="badge badge-status-' + STATUSES.indexOf(value) + '">' + esc(value) + '</span>';
@@ -694,6 +696,15 @@ function openDetail(id) {
       '<span class="detail-val">' + renderValue(r, column[0], true) + '</span></div>';
   });
   document.getElementById('detailGrid').innerHTML = html;
+  document.querySelectorAll('#detailGrid .detail-picture img').forEach(function(image) {
+    image.addEventListener('error', function() {
+      var message = document.createElement('span');
+      message.className = 'detail-picture-error';
+      message.textContent = '照片加载失败，点击查看原图';
+      message.setAttribute('role', 'status');
+      image.replaceWith(message);
+    });
+  });
   openModal('detailModal');
 }
 document.getElementById('btnDetailEdit').addEventListener('click', function() {

@@ -259,6 +259,10 @@
   .detail-item.full { grid-column: span 2; }
   .detail-key { font-size: 11px; color: var(--text-muted); }
   .detail-val { font-size: 14px; color: var(--text-primary); line-height: 1.6; overflow-wrap: anywhere; }
+  .detail-pictures { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .detail-picture { display: flex; justify-content: center; align-items: center; min-width: 0; min-height: 100px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-dark); }
+  .detail-picture img { display: block; max-width: 100%; max-height: 360px; width: auto; height: auto; object-fit: contain; }
+  .detail-picture-error { color: var(--accent-red); font-size: 13px; }
   .form-field { min-width: 0; }
 
   .link-btn { background:none; border:none; color: var(--text-muted); font-size: 12px; cursor: pointer; text-decoration: underline; padding: 0; }
