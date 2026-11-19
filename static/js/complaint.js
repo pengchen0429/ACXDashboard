@@ -288,6 +288,14 @@ function chart(id) {
   return charts[id];
 }
 
+function renderPieDetails(id, data, heading) {
+  var total = data.reduce(function(sum, item) { return sum + item.value; }, 0);
+  document.getElementById(id).innerHTML = '<table class="pie-details-table"><thead><tr><th scope="col">' + esc(heading) + '</th><th scope="col">数量</th><th scope="col">占比</th></tr></thead><tbody>' +
+    (total ? data.map(function(item) {
+      return '<tr><th scope="row"><span class="pie-detail-name"><span class="pie-swatch" style="background-color:' + item.itemStyle.color + '"></span><span>' + esc(item.name) + '</span></span></th><td>' + item.value + '</td><td>' + (item.value / total * 100).toFixed(1) + '%</td></tr>';
+    }).join('') : '<tr><td colspan="3" class="pie-empty">没有符合筛选条件的投诉记录</td></tr>') + '</tbody></table>';
+}
+
 function renderCharts() {
   /* trend by month */
   var monthMap = {};
@@ -323,13 +331,14 @@ function renderCharts() {
     if (i > -1) typeCnt[i]++;
   });
   var pal = [COLORS.cyan, COLORS.green, COLORS.orange, COLORS.purple, COLORS.pink, '#3b82f6'];
+  var typeData = TYPES.map(function(name, index) { return { value: typeCnt[index], name: name, itemStyle: { color: pal[index % pal.length] } }; });
+  renderPieDetails('typeDetails', typeData, '分类');
   var c2 = chart('chartType');
   if (c2) c2.setOption({
     tooltip: Object.assign({ formatter: function(p) { return esc(p.name) + ': ' + p.value + ' 件 (' + p.percent.toFixed(1) + '%)'; } }, tip()),
-    legend: { bottom: 0, left: 'center', textStyle: { color: '#6b7b8d', fontSize: 11 } },
-    series: [{ type: 'pie', radius: ['38%', '62%'], center: ['50%', '44%'], avoidLabelOverlap: true,
+    series: [{ type: 'pie', radius: ['38%', '72%'], center: ['50%', '50%'], avoidLabelOverlap: true, stillShowZeroSum: false,
       label: { show: false }, labelLine: { show: false },
-      data: TYPES.map(function(t, i) { return { value: typeCnt[i], name: t, itemStyle: { color: pal[i % pal.length] } }; })
+      data: typeData
     }]
   }, true);
 
@@ -337,13 +346,15 @@ function renderCharts() {
   filtered.forEach(function(record) {
     customerCounts.set(record.customerName, (customerCounts.get(record.customerName) || 0) + 1);
   });
+  var customerData = Array.from(customerCounts, function(entry) { return { name: entry[0], value: entry[1] }; }).sort(function(first, second) { return second.value - first.value; });
+  customerData.forEach(function(item, index) { item.itemStyle = { color: pal[index % pal.length] }; });
+  renderPieDetails('customerDetails', customerData, '客户');
   var customerChart = chart('chartCustomer');
   if (customerChart) customerChart.setOption({
     tooltip: Object.assign({ formatter: function(item) { return esc(item.name) + ': ' + item.value + ' 件 (' + item.percent.toFixed(1) + '%)'; } }, tip()),
-    legend: { type: 'scroll', bottom: 0, left: 'center', width: '90%', textStyle: { color: '#6b7b8d', fontSize: 11 }, formatter: function(name) { return name.length > 12 ? name.slice(0, 12) + '…' : name; }, tooltip: { show: true } },
-    series: [{ type: 'pie', radius: ['38%', '62%'], center: ['50%', '44%'], avoidLabelOverlap: true, stillShowZeroSum: false,
+    series: [{ type: 'pie', radius: ['38%', '72%'], center: ['50%', '50%'], avoidLabelOverlap: true, stillShowZeroSum: false,
       label: { show: false }, labelLine: { show: false },
-      data: Array.from(customerCounts, function(entry) { return { name: entry[0], value: entry[1] }; }).sort(function(first, second) { return second.value - first.value; })
+      data: customerData
     }]
   }, true);
 
@@ -370,7 +381,7 @@ function renderCharts() {
 var chartDialog = document.getElementById('complaintChartDialog');
 var expandedChart = null;
 document.querySelectorAll('.charts-grid .chart-box').forEach(function(element) {
-  var card = element.parentElement;
+  var card = element.closest('.chart-card');
   var title = card.querySelector('.chart-card-title');
   title.id = element.id + '-title';
   var button = document.createElement('button');

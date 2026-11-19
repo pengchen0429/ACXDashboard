@@ -4,7 +4,7 @@
 {% block title %}客户投诉管理 - CNSX数据看板{% endblock %}
 
 {% block head_extra %}
-<link rel="stylesheet" href="{% static 'css/complaint.css' %}?v=chart-expand-1">
+<link rel="stylesheet" href="{% static 'css/complaint.css' %}?v=pie-details-1">
 <script src="{% static 'js/echarts.min.js' %}"></script>
 {% endblock %}
 
@@ -87,11 +87,17 @@
     </div>
     <div class="chart-card">
       <div class="chart-card-title">投诉分类分布</div>
-      <div class="chart-box" id="chartType" data-chart="true"></div>
+      <div class="pie-layout">
+        <div class="chart-box" id="chartType" data-chart="true"></div>
+        <div class="pie-details" id="typeDetails" aria-label="投诉分类明细"><p class="pie-empty">暂无查询结果</p></div>
+      </div>
     </div>
     <div class="chart-card">
       <div class="chart-card-title">客户投诉分布</div>
-      <div class="chart-box" id="chartCustomer" data-chart="true"></div>
+      <div class="pie-layout">
+        <div class="chart-box" id="chartCustomer" data-chart="true"></div>
+        <div class="pie-details" id="customerDetails" aria-label="客户投诉明细"><p class="pie-empty">暂无查询结果</p></div>
+      </div>
     </div>
     <div class="chart-card">
       <div class="chart-card-title">投诉等级 × 处理状态</div>
@@ -251,5 +257,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/complaint.js' %}?v=chart-expand-1"></script>
+<script src="{% static 'js/complaint.js' %}?v=pie-details-1"></script>
 {% endblock %}
