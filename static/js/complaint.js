@@ -14,6 +14,7 @@ var TYPE_OPTIONS = Array.from(document.getElementById('fmType').options).map(fun
 var LEVEL_OPTIONS = Array.from(document.getElementById('fmLevel').options).map(function(option) { return option.value; }).filter(Boolean);
 var TYPES = TYPE_OPTIONS.slice();
 var LEVELS = LEVEL_OPTIONS.slice();
+var CUSTOMERS = [];
 var STATUSES = ['待处理', '处理中', '已解决', '已关闭'];
 var pageRoot = document.querySelector('.complaint-page');
 var allData = [];
@@ -69,6 +70,7 @@ function normalizeRecord(record) {
   var days = record.date && record.completion_time ? (Date.parse(record.completion_time) - Date.parse(record.date)) / 86400000 : null;
   return Object.assign({}, record, {
     id: String(record.no), reported_at: record.date || '', date: (record.date || '').slice(0, 10),
+    customerName: record.customer || '未填写',
     type: record.classification || '未填写', level: record.complaint_type || '未填写',
     status: record.state || '未填写', days: days !== null && Number.isFinite(days) && days >= 0 ? days : null
   });
@@ -100,6 +102,7 @@ function setStatus(message) {
 }
 
 function refreshFilterOptions() {
+  CUSTOMERS = Array.from(new Set(allData.map(function(record) { return record.customerName; }))).sort(function(first, second) { return first.localeCompare(second, 'zh-CN'); });
   TYPES = Array.from(new Set(TYPE_OPTIONS.concat(allData.map(function(record) { return record.type; }))));
   LEVELS = Array.from(new Set(LEVEL_OPTIONS.concat(allData.map(function(record) { return record.level; }))));
   STATUSES = Array.from(new Set(['待处理', '处理中', '已解决', '已关闭'].concat(allData.map(function(record) { return record.status; }))));
@@ -113,7 +116,7 @@ function refreshFilterOptions() {
     statusInput.appendChild(option);
   });
   statusInput.value = selectedStatus;
-  [typeFilter, levelFilter, statusFilter].forEach(function(filter) { filter.render(); });
+  [customerFilter, typeFilter, levelFilter, statusFilter].forEach(function(filter) { filter.render(); });
 }
 
 async function loadRecords() {
@@ -121,6 +124,7 @@ async function loadRecords() {
   var query = {
     from: document.getElementById('fDateFrom').value,
     to: document.getElementById('fDateTo').value,
+    customers: customerFilter.values.slice(),
     types: typeFilter.values.slice(), levels: levelFilter.values.slice(), statuses: statusFilter.values.slice()
   };
   if (query.from && query.to && query.from > query.to) { setStatus('开始时间不能晚于结束时间'); return; }
@@ -205,6 +209,7 @@ function createMultiSelect(id, options, placeholder) {
   filter.render();
   return filter;
 }
+var customerFilter = createMultiSelect('msCustomer', function() { return CUSTOMERS; }, '全部客户');
 var typeFilter = createMultiSelect('msType', function() { return TYPES; }, '全部分类');
 var levelFilter = createMultiSelect('msLevel', function() { return LEVELS; }, '全部等级');
 var statusFilter = createMultiSelect('msStatus', function() { return STATUSES; }, '全部状态');
@@ -213,7 +218,7 @@ var statusFilter = createMultiSelect('msStatus', function() { return STATUSES; }
 var filtered = [];
 var currentPage = 1;
 var pageSize = 10;
-var appliedFilters = { from: '', to: '', types: [], levels: [], statuses: [] };
+var appliedFilters = { from: '', to: '', customers: [], types: [], levels: [], statuses: [] };
 
 function resetDateRange() {
   var dateFormatter = new Intl.DateTimeFormat('sv-SE', {
@@ -232,6 +237,7 @@ function applyFilters() {
   var fromTime = from ? Date.parse(from + '+08:00') : null;
   var toTime = to ? Date.parse(to + '+08:00') : null;
   filtered = allData.filter(function(r) {
+    if (appliedFilters.customers.length && appliedFilters.customers.indexOf(r.customerName) === -1) return false;
     if (appliedFilters.types.length && appliedFilters.types.indexOf(r.type) === -1) return false;
     if (appliedFilters.levels.length && appliedFilters.levels.indexOf(r.level) === -1) return false;
     if (appliedFilters.statuses.length && appliedFilters.statuses.indexOf(r.status) === -1) return false;
@@ -327,6 +333,20 @@ function renderCharts() {
     }]
   }, true);
 
+  var customerCounts = new Map();
+  filtered.forEach(function(record) {
+    customerCounts.set(record.customerName, (customerCounts.get(record.customerName) || 0) + 1);
+  });
+  var customerChart = chart('chartCustomer');
+  if (customerChart) customerChart.setOption({
+    tooltip: Object.assign({ formatter: function(item) { return esc(item.name) + ': ' + item.value + ' 件 (' + item.percent.toFixed(1) + '%)'; } }, tip()),
+    legend: { type: 'scroll', bottom: 0, left: 'center', width: '90%', textStyle: { color: '#6b7b8d', fontSize: 11 }, formatter: function(name) { return name.length > 12 ? name.slice(0, 12) + '…' : name; }, tooltip: { show: true } },
+    series: [{ type: 'pie', radius: ['38%', '62%'], center: ['50%', '44%'], avoidLabelOverlap: true, stillShowZeroSum: false,
+      label: { show: false }, labelLine: { show: false },
+      data: Array.from(customerCounts, function(entry) { return { name: entry[0], value: entry[1] }; }).sort(function(first, second) { return second.value - first.value; })
+    }]
+  }, true);
+
   /* level x status stacked */
   var matrix = Object.create(null);
   LEVELS.forEach(function(l) { matrix[l] = Object.create(null); STATUSES.forEach(function(s) { matrix[l][s] = 0; }); });
@@ -346,6 +366,54 @@ function renderCharts() {
     })
   }, true);
 }
+
+var chartDialog = document.getElementById('complaintChartDialog');
+var expandedChart = null;
+document.querySelectorAll('.charts-grid .chart-box').forEach(function(element) {
+  var card = element.parentElement;
+  var title = card.querySelector('.chart-card-title');
+  title.id = element.id + '-title';
+  var button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'chart-expand';
+  button.title = '放大图表';
+  button.setAttribute('aria-label', '放大：' + title.textContent);
+  button.setAttribute('aria-haspopup', 'dialog');
+  button.setAttribute('aria-controls', chartDialog.id);
+  button.appendChild(document.getElementById('chartExpandIcon').content.cloneNode(true));
+  button.addEventListener('click', function() {
+    if (chartDialog.open || expandedChart) return;
+    var placeholder = document.createElement('div');
+    placeholder.style.height = card.getBoundingClientRect().height + 'px';
+    placeholder.setAttribute('aria-hidden', 'true');
+    expandedChart = { card: card, element: element, placeholder: placeholder, button: button, overflow: document.body.style.overflow };
+    card.replaceWith(placeholder);
+    chartDialog.appendChild(card);
+    chartDialog.setAttribute('aria-labelledby', title.id);
+    document.body.style.overflow = 'hidden';
+    chartDialog.showModal();
+    if (charts[element.id]) charts[element.id].resize();
+  });
+  title.appendChild(button);
+});
+chartDialog.querySelector('.chart-dialog-close').addEventListener('click', function() { chartDialog.close(); });
+chartDialog.addEventListener('keydown', function(event) {
+  if (event.key === 'Escape') { event.preventDefault(); chartDialog.close(); }
+});
+chartDialog.addEventListener('click', function(event) {
+  if (event.target !== chartDialog) return;
+  var bounds = chartDialog.getBoundingClientRect();
+  if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) chartDialog.close();
+});
+chartDialog.addEventListener('close', function() {
+  if (!expandedChart) return;
+  var previous = expandedChart;
+  expandedChart = null;
+  previous.placeholder.replaceWith(previous.card);
+  document.body.style.overflow = previous.overflow;
+  if (charts[previous.element.id]) charts[previous.element.id].resize();
+  previous.button.focus({ preventScroll: true });
+});
 
 /* SECTION: render table */
 function pictureUrl(reference) {
@@ -655,7 +723,7 @@ document.getElementById('tblBody').addEventListener('click', async function(e) {
 document.getElementById('btnQuery').addEventListener('click', loadRecords);
 document.getElementById('btnReset').addEventListener('click', function() {
   resetDateRange();
-  [typeFilter, levelFilter, statusFilter].forEach(function(filter) { filter.reset(); });
+  [customerFilter, typeFilter, levelFilter, statusFilter].forEach(function(filter) { filter.reset(); });
 });
 
 /* SECTION: export */

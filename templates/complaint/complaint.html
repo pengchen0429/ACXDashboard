@@ -4,12 +4,16 @@
 {% block title %}客户投诉管理 - CNSX数据看板{% endblock %}
 
 {% block head_extra %}
-<link rel="stylesheet" href="{% static 'css/complaint.css' %}?v=csv-images-1">
+<link rel="stylesheet" href="{% static 'css/complaint.css' %}?v=chart-expand-1">
 <script src="{% static 'js/echarts.min.js' %}"></script>
 {% endblock %}
 
 {% block content %}
 <div class="complaint-page" data-records-url="{% url 'complaint-records' %}" data-record-url="{% url 'complaint-record' 0 %}" data-images-url="{% url 'complaint-images' %}" data-export-url="{% url 'complaint-export' %}" data-csrf-token="{{ csrf_token }}" data-can-add="{{ perms.complaint.add_complaintlist|yesno:'true,false' }}" data-can-change="{{ perms.complaint.change_complaintlist|yesno:'true,false' }}" data-can-delete="{{ perms.complaint.delete_complaintlist|yesno:'true,false' }}">
+<template id="chartExpandIcon"><img src="{% static 'icons/maximize-2.svg' %}" alt="" width="16" height="16"></template>
+<dialog class="chart-dialog" id="complaintChartDialog" aria-label="图表放大查看">
+  <button type="button" class="chart-dialog-close" title="关闭放大" aria-label="关闭放大">&times;</button>
+</dialog>
 <!-- SECTION: header -->
 <div class="header">
   <h1>📣 客户投诉管理</h1>
@@ -26,6 +30,13 @@
           <input type="datetime-local" class="text-input" id="fDateFrom" aria-label="投诉开始时间" style="padding:0 8px;">
           <span style="color:var(--text-muted);font-size:12px;">至</span>
           <input type="datetime-local" class="text-input" id="fDateTo" aria-label="投诉结束时间" style="padding:0 8px;">
+        </div>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">客户（多选）</div>
+        <div class="multi-select" id="msCustomer">
+          <button type="button" class="multi-select-trigger" aria-expanded="false" aria-label="客户筛选">全部客户</button>
+          <div class="multi-select-dropdown"><div class="options-list"></div></div>
         </div>
       </div>
       <div class="filter-group">
@@ -77,6 +88,10 @@
     <div class="chart-card">
       <div class="chart-card-title">投诉分类分布</div>
       <div class="chart-box" id="chartType" data-chart="true"></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-card-title">客户投诉分布</div>
+      <div class="chart-box" id="chartCustomer" data-chart="true"></div>
     </div>
     <div class="chart-card">
       <div class="chart-card-title">投诉等级 × 处理状态</div>
@@ -236,5 +251,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/complaint.js' %}?v=trend-grade-a-6"></script>
+<script src="{% static 'js/complaint.js' %}?v=chart-expand-1"></script>
 {% endblock %}

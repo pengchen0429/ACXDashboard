@@ -1,0 +1,1857 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>染色机集中控制界面</title>
+<style>
+/* SECTION: reset & tokens */
+*,*::before,*::after{box-sizing:border-box}
+:root{
+  --bg:#05080f;--bg2:#080e1a;--panel:rgba(14,25,44,.72);--panel2:rgba(10,18,33,.86);
+  --line:rgba(84,140,210,.20);--line2:rgba(84,140,210,.34);
+  --tx:#e3edf9;--tx2:#a6bcd7;--tx3:#7e97b6;
+  --cy:#31dcff;--gr:#2ee08a;--ye:#ffc247;--or:#ff9147;--rd:#ff5566;--pu:#a883ff;--bl:#5f8dff;
+  --shadow:0 10px 30px rgba(0,0,0,.38);
+  --mono:"DIN Alternate","Bahnschrift","Roboto Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+}
+html,body{margin:0;padding:0;min-height:100%}
+body{
+  font-family:var(--sans);color:var(--tx);background:var(--bg);
+  font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;
+  background-image:
+    radial-gradient(900px 500px at 12% -8%,rgba(49,220,255,.13),transparent 60%),
+    radial-gradient(800px 480px at 88% 4%,rgba(168,131,255,.10),transparent 62%),
+    linear-gradient(rgba(84,140,210,.055) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(84,140,210,.055) 1px,transparent 1px);
+  background-size:auto,auto,44px 44px,44px 44px;background-attachment:fixed;
+}
+h1,h2,h3,h4,p{margin:0}
+button,select,input{font-family:inherit;color:inherit}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:.02em}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:rgba(84,140,210,.32);border-radius:8px}
+::-webkit-scrollbar-track{background:transparent}
+
+/* SECTION: layout shell */
+.wrap{max-width:1920px;margin:0 auto;padding:12px clamp(10px,2vw,22px) 26px}
+.topbar{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;padding:10px 14px;
+  border:1px solid var(--line);background:linear-gradient(180deg,rgba(16,30,54,.9),rgba(8,14,26,.7));
+  border-radius:14px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.topbar::after{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:linear-gradient(180deg,var(--cy),var(--pu))}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.logo{width:38px;height:38px;flex:0 0 38px;border-radius:11px;border:1px solid var(--line2);
+  background:radial-gradient(circle at 30% 25%,rgba(49,220,255,.45),rgba(8,14,26,.6));display:grid;place-items:center}
+.logo span{font-family:var(--mono);font-size:15px;font-weight:800;color:var(--cy)}
+.brand-t{font-size:clamp(15px,2.2vw,19px);font-weight:700;letter-spacing:.06em;white-space:nowrap}
+.brand-s{font-size:11px;color:var(--tx3);letter-spacing:.14em;text-transform:uppercase}
+.top-meta{display:flex;flex-wrap:wrap;gap:8px 14px;margin-left:auto;align-items:center}
+.pill{display:flex;align-items:center;gap:7px;padding:5px 11px;border:1px solid var(--line);border-radius:999px;
+  background:rgba(10,20,38,.7);font-size:12px;color:var(--tx2);white-space:nowrap}
+.pill b{color:var(--tx);font-family:var(--mono)}
+.live{width:8px;height:8px;border-radius:50%;background:var(--gr);box-shadow:0 0 0 0 rgba(46,224,138,.7);animation:pulse 1.6s infinite}
+.live.off{background:var(--tx3);animation:none;box-shadow:none}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(46,224,138,.55)}70%{box-shadow:0 0 0 9px rgba(46,224,138,0)}100%{box-shadow:0 0 0 0 rgba(46,224,138,0)}}
+.btn{border:1px solid var(--line2);background:rgba(16,30,54,.8);color:var(--tx);border-radius:9px;padding:6px 12px;
+  font-size:12.5px;cursor:pointer;transition:.18s;min-height:34px}
+.btn:hover{border-color:var(--cy);color:#fff;box-shadow:0 0 14px rgba(49,220,255,.25)}
+.btn.on{background:linear-gradient(180deg,rgba(49,220,255,.28),rgba(49,220,255,.10));border-color:var(--cy);color:#eafcff}
+.sel{background:rgba(16,30,54,.85);border:1px solid var(--line2);border-radius:9px;padding:6px 8px;font-size:12.5px;min-height:34px}
+.inp{background:rgba(16,30,54,.85);border:1px solid var(--line2);border-radius:9px;padding:6px 10px;font-size:13px;min-height:34px;min-width:0;width:100%}
+.inp::placeholder{color:var(--tx3)}
+
+/* SECTION: kpi strip */
+.kpis{display:grid;gap:10px;margin-top:12px;grid-template-columns:repeat(6,minmax(0,1fr))}
+.kpi{border:1px solid var(--line);border-radius:13px;padding:10px 12px;background:var(--panel);position:relative;overflow:hidden;min-width:0}
+.kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--cy);opacity:.8}
+.kpi.k2::before{background:var(--gr)}.kpi.k3::before{background:var(--ye)}
+.kpi.k4::before{background:var(--or)}.kpi.k5::before{background:var(--pu)}.kpi.k6::before{background:var(--rd)}
+.kpi h4{font-size:11.5px;color:var(--tx2);font-weight:600;letter-spacing:.04em;display:flex;gap:6px;align-items:center}
+.kpi .v{font-family:var(--mono);font-size:clamp(19px,2.4vw,27px);font-weight:700;line-height:1.2;margin-top:3px;white-space:nowrap}
+.kpi .u{font-size:11px;color:var(--tx3);margin-left:4px;font-weight:400}
+.kpi .s{font-size:11px;color:var(--tx2);margin-top:2px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.up{color:var(--gr)}.down{color:var(--rd)}
+
+/* SECTION: tabs */
+.tabs{display:flex;gap:8px;margin-top:14px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+.tab{border:1px solid var(--line);background:rgba(10,20,38,.72);border-radius:11px;padding:9px 15px;font-size:13.5px;
+  cursor:pointer;white-space:nowrap;color:var(--tx2);transition:.18s;display:flex;align-items:center;gap:8px;min-height:40px}
+.tab:hover{color:#fff;border-color:var(--line2)}
+.tab.on{color:#eafcff;background:linear-gradient(180deg,rgba(49,220,255,.22),rgba(49,220,255,.06));border-color:rgba(49,220,255,.55);
+  box-shadow:0 0 18px rgba(49,220,255,.18)}
+.tab .badge{font-family:var(--mono);font-size:11px;background:rgba(255,85,102,.9);color:#fff;border-radius:999px;padding:1px 6px}
+.panel{display:none;margin-top:14px}
+.panel.on{display:block;animation:fade .3s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* SECTION: cards */
+.card{border:1px solid var(--line);border-radius:14px;background:var(--panel);box-shadow:var(--shadow);min-width:0;overflow:hidden}
+.card-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 13px;border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(24,42,72,.55),transparent)}
+.card-h h3{font-size:13.5px;font-weight:700;letter-spacing:.03em;display:flex;align-items:center;gap:8px}
+.card-h h3::before{content:"";width:6px;height:6px;border-radius:2px;background:var(--cy);box-shadow:0 0 9px var(--cy)}
+.card-h .hint{font-size:11px;color:var(--tx3)}
+.card-h .right{margin-left:auto;display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.card-b{padding:12px 13px}
+.grid2{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr))}
+.grid3{display:grid;gap:12px;grid-template-columns:repeat(3,minmax(0,1fr))}
+.stack{display:grid;gap:12px}
+@media (max-width:1180px){.grid3{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:760px){.grid2,.grid3{grid-template-columns:minmax(0,1fr)}}
+
+/* SECTION: overview */
+.ov-wrap{display:grid;gap:12px;grid-template-columns:minmax(0,1fr) 330px;align-items:start}
+@media (max-width:1280px){.ov-wrap{grid-template-columns:minmax(0,1fr)}}
+.chips{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.chip{border:1px solid var(--line);background:rgba(12,24,44,.7);border-radius:999px;padding:5px 11px;font-size:12px;
+  cursor:pointer;color:var(--tx2);display:flex;align-items:center;gap:6px;min-height:30px;transition:.15s}
+.chip:hover{color:#fff}
+.chip.on{border-color:var(--cy);color:#eafcff;background:rgba(49,220,255,.14)}
+.chip i{width:8px;height:8px;border-radius:50%;background:currentColor;display:block}
+.mgrid{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(184px,1fr));margin-top:11px}
+.mc{border:1px solid var(--line);border-radius:12px;background:linear-gradient(180deg,rgba(17,30,53,.9),rgba(9,16,30,.86));
+  padding:9px 10px;cursor:pointer;transition:.18s;position:relative;overflow:hidden;min-width:0}
+.mc::after{content:"";position:absolute;inset:0 auto auto 0;height:2px;width:100%;background:var(--st,var(--tx3));opacity:.85}
+.mc:hover{border-color:var(--line2);transform:translateY(-2px);box-shadow:0 10px 22px rgba(0,0,0,.42)}
+.mc.al{border-color:rgba(255,85,102,.55)}
+.mc-h{display:flex;align-items:center;gap:7px;font-size:12px}
+.mc-code{font-family:var(--mono);font-weight:700;font-size:14px;color:#eaf6ff}
+.mc-type{color:var(--tx3);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
+.mc-st{font-size:10.5px;padding:2px 7px;border-radius:999px;border:1px solid var(--st,var(--line));color:var(--st,var(--tx2));white-space:nowrap}
+.mc-dot{width:8px;height:8px;border-radius:50%;background:var(--st,var(--tx3));flex:0 0 8px}
+.mc.al .mc-dot{animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.18}}
+.mc-main{display:flex;align-items:flex-end;gap:8px;margin:7px 0 3px}
+.mc-temp{font-family:var(--mono);font-size:29px;font-weight:700;line-height:1;color:var(--st,#fff);text-shadow:0 0 18px rgba(49,220,255,.35)}
+.mc-temp u{font-size:13px;text-decoration:none;color:var(--tx3);margin-left:2px}
+.mc-side{display:flex;flex-direction:column;gap:3px;margin-left:auto;text-align:right}
+.mc-side div{font-family:var(--mono);font-size:11.5px;color:var(--tx2)}
+.mc-side small{font-family:var(--sans);font-size:9.5px;color:var(--tx3);margin-left:3px}
+.mc-phase{font-size:11px;color:var(--tx2);display:flex;justify-content:space-between;gap:6px;margin-top:5px}
+.prog{height:4px;border-radius:3px;background:rgba(120,160,210,.16);overflow:hidden;margin-top:5px}
+.prog i{display:block;height:100%;background:linear-gradient(90deg,var(--cy),var(--gr));width:0;transition:width .5s}
+.mc-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 6px;margin-top:8px;padding-top:7px;border-top:1px dashed var(--line)}
+.mc-grid dt{font-size:10px;color:var(--tx3)}
+.mc-grid dd{margin:0;font-family:var(--mono);font-size:12.5px;color:var(--tx);white-space:nowrap}
+.mc-f{margin-top:7px;font-size:10.5px;color:var(--tx3);display:flex;gap:7px;flex-wrap:wrap;min-width:0}
+.mc-f b{color:var(--tx2);font-weight:500;font-family:var(--mono)}
+.aside-list{display:grid;gap:8px}
+.as-item{display:flex;gap:9px;align-items:center;padding:7px 9px;border:1px solid var(--line);border-radius:10px;background:rgba(10,20,38,.6)}
+.as-item .t{font-family:var(--mono);font-size:10.5px;color:var(--tx3);white-space:nowrap}
+.as-item .m{min-width:0;flex:1}
+.as-item .m b{display:block;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.as-item .m span{font-size:11px;color:var(--tx2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.lv{width:7px;height:7px;border-radius:50%;flex:0 0 7px}
+.bar-list{display:grid;gap:7px}
+.bl{display:grid;grid-template-columns:78px minmax(0,1fr) 66px;gap:8px;align-items:center;font-size:11.5px}
+.bl .track{height:7px;border-radius:4px;background:rgba(120,160,210,.14);overflow:hidden}
+.bl .track i{display:block;height:100%;background:linear-gradient(90deg,var(--bl-c,var(--cy)),rgba(255,255,255,.35));width:0}
+.bl b{font-family:var(--mono);text-align:right;color:var(--tx)}
+.bl span{color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* SECTION: energy */
+.ecards{display:grid;gap:11px;grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:12px}
+@media (max-width:980px){.ecards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:560px){.ecards{grid-template-columns:minmax(0,1fr)}}
+.ec{border:1px solid var(--line);border-radius:13px;padding:11px 12px;background:var(--panel2);position:relative;overflow:hidden;min-width:0}
+.ec-top{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--tx2)}
+.ec-ico{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;border:1px solid var(--line2);font-size:13px;flex:0 0 26px}
+.ec-v{font-family:var(--mono);font-size:24px;font-weight:700;margin-top:6px;white-space:nowrap}
+.ec-v u{font-size:12px;text-decoration:none;color:var(--tx3);margin-left:3px}
+.ec-row{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;color:var(--tx2);margin-top:3px}
+.ec-row b{color:var(--tx)}
+.ec-name{color:var(--tx);font-weight:600}
+.ec-row b{font-family:var(--mono);color:var(--tx2);font-weight:600}
+.ec canvas{display:block;width:100%;height:34px;margin-top:7px}
+.intensity{display:grid;gap:9px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.it{border:1px dashed var(--line);border-radius:11px;padding:9px 10px;min-width:0}
+.it h5{margin:0 0 5px;font-size:11.5px;color:var(--tx3);font-weight:600}
+.it .n{font-family:var(--mono);font-size:18px;font-weight:700}
+.it .n u{font-size:11px;text-decoration:none;color:var(--tx3);margin-left:3px}
+.it .cmp{font-size:11px;margin-top:2px}
+.cv{width:100%;display:block}
+
+/* SECTION: tables */
+.tbl-wrap{overflow-x:auto;border-radius:10px}
+table.tbl{width:100%;border-collapse:collapse;font-size:12.5px;min-width:640px}
+.tbl th{position:sticky;top:0;background:rgba(12,24,44,.96);color:var(--tx2);font-weight:600;text-align:left;
+  padding:8px 9px;border-bottom:1px solid var(--line2);white-space:nowrap;font-size:11.5px}
+.tbl td{padding:7px 9px;border-bottom:1px solid var(--line);white-space:nowrap;color:var(--tx)}
+.tbl tr:hover td{background:rgba(49,220,255,.05)}
+.tbl .mono{font-family:var(--mono)}
+.tbl .st{display:inline-flex;align-items:center;gap:6px;font-size:11.5px}
+.pbar{display:flex;align-items:center;gap:7px;min-width:110px}
+.pbar .track{flex:1;min-width:50px;height:6px;border-radius:4px;background:rgba(120,160,210,.16);overflow:hidden}
+.pbar .track i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--cy),var(--gr))}
+.pbar b{font-family:var(--mono);font-size:11.5px;min-width:38px;text-align:right}
+.pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;font-size:12px;color:var(--tx2);flex-wrap:wrap;margin-top:9px}
+.mini{border:1px solid var(--line2);background:rgba(16,30,54,.8);border-radius:7px;padding:3px 9px;font-size:11.5px;cursor:pointer;min-height:28px;color:var(--tx)}
+.mini:hover:not(:disabled){border-color:var(--cy)}
+.mini:disabled{opacity:.4;cursor:not-allowed}
+.tool{display:flex;gap:9px;flex-wrap:wrap;align-items:center;padding:10px 13px;border-bottom:1px solid var(--line);background:rgba(10,20,38,.5)}
+.tool .grow{flex:1;min-width:150px;max-width:260px}
+canvas.spark{width:62px;height:18px;display:block}
+.ec canvas.ec-spark{width:100%;height:34px}
+.empty{padding:26px 14px;text-align:center;color:var(--tx3);font-size:12.5px}
+
+/* SECTION: drawer */
+.mask{position:fixed;inset:0;background:rgba(2,6,14,.6);backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:.25s;z-index:40}
+.mask.on{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(560px,100%);background:linear-gradient(180deg,rgba(10,20,38,.98),rgba(6,11,20,.99));
+  border-left:1px solid var(--line2);z-index:50;transform:translateX(102%);transition:transform .3s cubic-bezier(.4,.1,.2,1);
+  display:flex;flex-direction:column;box-shadow:-18px 0 46px rgba(0,0,0,.5)}
+.drawer.on{transform:none}
+.dw-h{padding:13px 15px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+.dw-h .code{font-family:var(--mono);font-size:20px;font-weight:700}
+.dw-h .x{margin-left:auto}
+.dw-b{padding:13px 15px;overflow:auto;flex:1;display:grid;gap:12px;align-content:start}
+.flow{display:flex;gap:5px;overflow-x:auto;padding-bottom:5px}
+.fl{border:1px solid var(--line);border-radius:8px;padding:5px 8px;font-size:11px;color:var(--tx3);white-space:nowrap;background:rgba(10,20,38,.6)}
+.fl.done{color:var(--gr);border-color:rgba(46,224,138,.4)}
+.fl.cur{color:#eafcff;border-color:var(--cy);background:rgba(49,220,255,.16);box-shadow:0 0 12px rgba(49,220,255,.2)}
+.plist{display:grid;gap:7px;grid-template-columns:repeat(auto-fit,minmax(158px,1fr))}
+.pl{border:1px solid var(--line);border-radius:10px;padding:8px 9px;background:rgba(12,24,44,.55);min-width:0}
+.pl h6{margin:0;font-size:11px;color:var(--tx3);font-weight:600;display:flex;justify-content:space-between;gap:6px}
+.pl .n{font-family:var(--mono);font-size:17px;font-weight:700;margin-top:3px}
+.pl .n u{font-size:11px;text-decoration:none;color:var(--tx3);margin-left:3px}
+.pl .rg{font-size:10.5px;color:var(--tx3);font-family:var(--mono)}
+.dw-f{padding:11px 15px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap;background:rgba(8,14,26,.7)}
+
+/* SECTION: toast */
+.toasts{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:80;display:grid;gap:8px;width:min(420px,92vw)}
+.toast{border:1px solid var(--line2);background:rgba(12,24,44,.96);border-radius:11px;padding:10px 13px;font-size:13px;
+  box-shadow:var(--shadow);display:flex;gap:9px;align-items:flex-start;animation:tin .25s ease}
+.toast i{width:8px;height:8px;border-radius:50%;margin-top:5px;flex:0 0 8px;background:var(--cy)}
+.toast.warn i{background:var(--ye)}.toast.err i{background:var(--rd)}.toast.ok i{background:var(--gr)}
+@keyframes tin{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.foot{margin-top:16px;font-size:11.5px;color:var(--tx3);line-height:1.7;border-top:1px solid var(--line);padding-top:11px}
+.foot b{color:var(--tx2);font-weight:600}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--tx2)}
+.legend span{display:flex;align-items:center;gap:5px}
+.legend s{width:10px;height:3px;border-radius:2px;display:block;text-decoration:none}
+@media (max-width:700px){
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .mgrid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
+  /* 小屏：顶栏分成标题行与操作行，按钮/下拉达到触控尺寸 */
+  .topbar{padding:9px 11px;gap:8px 12px}
+  .brand{flex:1 1 100%}
+  .top-meta{margin-left:0;flex:1 1 100%;gap:6px 8px}
+  .pill{padding:4px 9px;font-size:11.5px}
+  .btn,.sel,.inp{min-height:42px;font-size:13px}
+  .tab{padding:8px 12px;min-height:44px}
+  /* 工具条与筛选条按内容换行，避免右侧项贴边 */
+  .tool,.card-h{gap:8px}
+  .tool .grow{max-width:none;flex:1 1 100%}
+  .tool .chips{margin-left:0;width:100%}
+  #ov-chips{row-gap:7px}
+  .ecards{grid-template-columns:minmax(0,1fr)}
+  .pager{justify-content:space-between}
+  .mini{min-height:40px;padding:6px 12px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- SECTION: markup topbar -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo"><span>DYE</span></div>
+      <div>
+        <h1 class="brand-t">染色机集中控制界面</h1>
+        <div class="brand-s">Dyeing Machine Group Control Center</div>
+      </div>
+    </div>
+    <div class="top-meta">
+      <div class="pill"><span class="live" id="live-dot"></span><span id="tb-state">采集中</span></div>
+      <div class="pill">班次 <b id="shift">甲班</b></div>
+      <div class="pill"><span class="num" id="clock">--:--:--</span></div>
+      <div class="pill">车间 <b>染色一车间</b> · 机台 <b id="tb-total">0</b> 台</div>
+      <select class="sel" id="sel-rate" aria-label="刷新频率">
+        <option value="1000">实时 1s</option>
+        <option value="2000" selected>标准 2s</option>
+        <option value="5000">省电 5s</option>
+      </select>
+      <button class="btn on" id="btn-run">暂停采集</button>
+      <button class="btn" id="btn-full">全屏</button>
+    </div>
+  </header>
+
+  <!-- SECTION: markup kpi -->
+  <section class="kpis" id="kpis">
+    <div class="kpi"><h4>开机机台</h4><div class="v"><span id="kpi-run">0</span><span class="u">/ <span id="kpi-total">0</span> 台</span></div><div class="s" id="kpi-run-s">运行率 --</div></div>
+    <div class="kpi k2"><h4>今日产量</h4><div class="v"><span id="kpi-out">0</span><span class="u">t</span></div><div class="s">计划达成 <b id="kpi-plan" class="num">--%</b> · 在产 <b id="kpi-batch" class="num">0</b> 缸</div></div>
+    <div class="kpi k3"><h4>实时综合负荷</h4><div class="v"><span id="kpi-pow">0</span><span class="u">kW</span></div><div class="s" id="kpi-pow-s">蒸汽 -- kg/h · 水 -- m³/h</div></div>
+    <div class="kpi k4"><h4>单位产品综合能耗</h4><div class="v"><span id="kpi-eui">0</span><span class="u">kgce/t</span></div><div class="s">较基准 <b id="kpi-eui-c" class="num">--</b></div></div>
+    <div class="kpi k5"><h4>一次染色成功率</h4><div class="v"><span id="kpi-fps">0</span><span class="u">%</span></div><div class="s">返缸 <b id="kpi-re" class="num">0</b> 缸 · 色差预警 <b id="kpi-dc" class="num">0</b></div></div>
+    <div class="kpi k6"><h4>未确认报警</h4><div class="v"><span id="kpi-al">0</span><span class="u">条</span></div><div class="s">紧急 <b id="kpi-al1" class="num">0</b> · 重要 <b id="kpi-al2" class="num">0</b> · 提示 <b id="kpi-al3" class="num">0</b></div></div>
+  </section>
+
+  <!-- SECTION: markup tabs -->
+  <nav class="tabs" role="tablist">
+    <button class="tab on" data-tab="overview">机群总览</button>
+    <button class="tab" data-tab="energy">能耗中心</button>
+    <button class="tab" data-tab="comp">组件监控 <span class="badge" style="background:rgba(49,220,255,.85)" id="bd-cp">0</span></button>
+    <button class="tab" data-tab="order">在产工单 / 产量</button>
+    <button class="tab" data-tab="alarm">报警中心 <span class="badge" id="bd-al">0</span></button>
+  </nav>
+
+  <!-- SECTION: panel overview -->
+  <section class="panel on" id="p-overview">
+    <div class="ov-wrap">
+      <div>
+        <div class="card">
+          <div class="card-h">
+            <h3>机群运行总览</h3>
+            <span class="hint">点击任一机台可下钻单机工艺曲线与组件明细</span>
+            <div class="right">
+              <input class="inp" id="ov-search" placeholder="搜机台号 / 工单 / 色号" style="max-width:190px">
+              <select class="sel" id="ov-sort">
+                <option value="code">按机台号</option>
+                <option value="temp">按缸温降序</option>
+                <option value="remain">按剩余时间</option>
+                <option value="alarm">报警优先</option>
+              </select>
+            </div>
+          </div>
+          <div class="card-b">
+            <div class="chips" id="ov-chips">
+              <button class="chip on" data-s="all">全部 <b class="num" id="c-all">0</b></button>
+              <button class="chip" data-s="run" style="color:var(--gr)">运行 <b class="num" id="c-run">0</b></button>
+              <button class="chip" data-s="heat" style="color:var(--or)">升温/保温 <b class="num" id="c-heat">0</b></button>
+              <button class="chip" data-s="wash" style="color:var(--cy)">水洗/皂洗 <b class="num" id="c-wash">0</b></button>
+              <button class="chip" data-s="fault" style="color:var(--rd)">故障 <b class="num" id="c-fault">0</b></button>
+              <button class="chip" data-s="idle" style="color:var(--tx3)">待机/保养 <b class="num" id="c-idle">0</b></button>
+            </div>
+            <div class="mgrid" id="ov-grid"></div>
+            <div class="empty" id="ov-empty" style="display:none">当前筛选条件下没有匹配的机台，请调整状态或关键词。</div>
+          </div>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="card">
+          <div class="card-h"><h3>机群状态分布</h3><span class="hint">台数 / 占比</span></div>
+          <div class="card-b"><canvas class="cv" id="ch-state" height="150"></canvas>
+            <div class="legend" id="lg-state" style="margin-top:8px"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>实时能耗（本班次）</h3><span class="hint">分介质</span></div>
+          <div class="card-b"><div class="bar-list" id="ov-energy"></div></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>最新报警</h3><div class="right"><button class="mini" data-goto="alarm">全部</button></div></div>
+          <div class="card-b"><div class="aside-list" id="ov-alarms"></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION: panel energy -->
+  <section class="panel" id="p-energy">
+    <div class="ecards" id="ec-cards"></div>
+    <div class="card" style="margin-bottom:12px">
+      <div class="card-h">
+        <h3>能耗趋势</h3>
+        <div class="right chips" id="en-chips">
+          <button class="chip on" data-en="kwh" style="color:var(--ye)">电力</button>
+          <button class="chip" data-en="steam" style="color:var(--cy)">蒸汽</button>
+          <button class="chip" data-en="gas" style="color:var(--or)">天然气</button>
+          <button class="chip" data-en="water" style="color:var(--bl)">工业水</button>
+        </div>
+        <div class="right">
+          <select class="sel" id="en-range">
+            <option value="day">今日（24 小时）</option>
+            <option value="week">近 7 日</option>
+            <option value="month">近 30 日</option>
+          </select>
+        </div>
+      </div>
+      <div class="card-b">
+        <canvas class="cv" id="ch-energy" height="260"></canvas>
+        <div class="legend" style="margin-top:9px">
+          <span><s style="background:var(--ye)"></s><em id="lg-en-name">电力消耗</em></span>
+          <span><s style="background:var(--cy)"></s>产量（t，右轴）</span>
+          <span><s style="background:var(--rd)"></s>单耗基准线</span>
+        </div>
+      </div>
+    </div>
+    <div class="grid3" style="margin-bottom:12px">
+      <div class="card">
+        <div class="card-h"><h3>能耗结构（折标煤）</h3><span class="hint">按工序</span></div>
+        <div class="card-b"><canvas class="cv" id="ch-mix" height="200"></canvas><div class="legend" id="lg-mix" style="margin-top:8px"></div></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>机台单耗 TOP10</h3><span class="hint">kgce/t 布</span></div>
+        <div class="card-b"><canvas class="cv" id="ch-top" height="200"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>分时用电与成本</h3><span class="hint">峰 / 平 / 谷</span></div>
+        <div class="card-b"><div class="bar-list" id="en-tou"></div>
+          <div class="intensity" style="margin-top:11px">
+            <div class="it"><h5>今日电费</h5><div class="n"><span id="en-cost">0</span><u>万元</u></div></div>
+            <div class="it"><h5>碳排强度</h5><div class="n"><span id="en-co2">0</span><u>kgCO₂/t</u></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h3>单位产品消耗对标</h3><span class="hint">口径：吨布损耗，基准取自行业先进水平</span></div>
+      <div class="card-b"><div class="intensity" id="en-intensity"></div></div>
+    </div>
+  </section>
+
+  <!-- SECTION: panel components -->
+  <section class="panel" id="p-comp">
+    <div class="grid2" style="margin-bottom:12px">
+      <div class="card">
+        <div class="card-h"><h3>组件健康度</h3><span class="hint">按组件类别统计测点状态</span></div>
+        <div class="card-b"><canvas class="cv" id="ch-comp" height="220"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>测点状态汇总</h3><span class="hint">阈值来自工艺规程</span></div>
+        <div class="card-b">
+          <div class="bar-list" id="cp-sum"></div>
+          <div class="hint" style="font-size:11px;color:var(--tx3);margin-top:9px">
+            测点总数 <b class="num" id="cp-total">0</b> 个，采集频率 1s，通信协议 OPC UA / Modbus TCP，丢包率 <b class="num">0.03%</b>。
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h3>组件实时监控清单</h3><span class="hint">热熔箱温度、电机转速、电机电流等全部测点</span></div>
+      <div class="tool">
+        <div class="grow"><input class="inp" id="cp-search" placeholder="搜组件 / 机台 / 位号"></div>
+        <select class="sel" id="cp-group"><option value="all">全部类别</option></select>
+        <select class="sel" id="cp-machine"><option value="all">全部机台</option></select>
+        <select class="sel" id="cp-status">
+          <option value="all">全部状态</option><option value="ok">正常</option>
+          <option value="warn">预警</option><option value="alarm">越限</option><option value="off">离线</option>
+        </select>
+        <div class="chips" style="margin-left:auto">
+          <button class="chip" id="cp-sort-val">按偏差排序</button>
+          <button class="mini" id="cp-export">导出 CSV</button>
+        </div>
+      </div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr>
+            <th>位号</th><th>组件 / 参数</th><th>类别</th><th>所属机台</th><th>实时值</th><th>单位</th>
+            <th>量程 / 阈值</th><th>趋势</th><th>状态</th><th>更新时间</th>
+          </tr></thead>
+          <tbody id="cp-body"></tbody>
+        </table>
+      </div>
+      <div class="card-b" style="padding-top:4px">
+        <div class="pager">
+          <span id="cp-info">--</span>
+          <select class="sel" id="cp-size"><option>24</option><option>40</option><option>60</option></select>
+          <button class="mini" id="cp-prev">上一页</button>
+          <button class="mini" id="cp-next">下一页</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION: panel orders -->
+  <section class="panel" id="p-order">
+    <div class="grid2" style="margin-bottom:12px">
+      <div class="card">
+        <div class="card-h"><h3>近 7 日产量与计划达成</h3><span class="hint">实际 / 计划 / 达成率</span></div>
+        <div class="card-b"><canvas class="cv" id="ch-output" height="220"></canvas>
+          <div class="legend" style="margin-top:8px">
+            <span><s style="background:var(--gr)"></s>实际产量(t)</span>
+            <span><s style="background:var(--tx3)"></s>计划产量(t)</span>
+            <span><s style="background:var(--cy)"></s>达成率(%)</span>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>班次产量对比</h3><span class="hint">甲 / 乙 / 丙</span></div>
+        <div class="card-b"><canvas class="cv" id="ch-shift" height="220"></canvas>
+          <div class="legend" style="margin-top:8px">
+            <span><s style="background:var(--cy)"></s>染色布(t)</span>
+            <span><s style="background:var(--pu)"></s>一次合格(t)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h">
+        <h3>在生产工单</h3>
+        <div class="right chips" id="od-chips">
+          <button class="chip on" data-os="all">全部</button>
+          <button class="chip" data-os="run" style="color:var(--gr)">生产中</button>
+          <button class="chip" data-os="wait" style="color:var(--ye)">待排缸</button>
+          <button class="chip" data-os="re" style="color:var(--or)">返缸重染</button>
+          <button class="chip" data-os="done" style="color:var(--tx3)">已完工</button>
+        </div>
+        <div class="right"><input class="inp" id="od-search" placeholder="搜工单 / 客户 / 色号" style="max-width:180px"></div>
+      </div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr>
+            <th>工单号</th><th>客户 / 产品</th><th>布种 · 克重</th><th>色号 / 工艺</th>
+            <th>机台</th><th>缸数</th><th>计划 / 实际(kg)</th><th>完成度</th>
+            <th>浴比</th><th>单耗(kgce/t)</th><th>状态</th><th>交期</th>
+          </tr></thead>
+          <tbody id="od-body"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="od-empty" style="display:none">没有符合条件的工单。</div>
+    </div>
+  </section>
+
+  <!-- SECTION: panel alarms -->
+  <section class="panel" id="p-alarm">
+    <div class="ecards" id="al-stats"></div>
+    <div class="card">
+      <div class="card-h">
+        <h3>实时报警与处置</h3>
+        <div class="right chips" id="al-chips">
+          <button class="chip on" data-as="all">全部等级</button>
+          <button class="chip" data-as="1" style="color:var(--rd)">紧急</button>
+          <button class="chip" data-as="2" style="color:var(--ye)">重要</button>
+          <button class="chip" data-as="3" style="color:var(--cy)">提示</button>
+        </div>
+        <div class="right"><label class="chip" style="cursor:pointer"><input type="checkbox" id="al-open" style="width:15px;height:15px">仅未闭环</label></div>
+      </div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr>
+            <th>时间</th><th>等级</th><th>机台</th><th>组件 / 位号</th><th>报警内容</th>
+            <th>实测 / 阈值</th><th>持续</th><th>状态</th><th>处置</th>
+          </tr></thead>
+          <tbody id="al-body"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="al-empty" style="display:none">当前筛选条件下没有报警记录。</div>
+    </div>
+  </section>
+
+  <p class="foot">
+    <b>界面说明：</b>本页为染色机集群中央控制的<b>高保真交互原型</b>，机台 <span class="num" id="foot-machines">36</span> 台、测点 <span class="num" id="foot-points">0</span> 个、工单与报警数据均为前端<b>模拟数据</b>并按采集频率实时刷新，用于演示现场效果与交互流程，不代表任何真实工厂的生产或能耗数据。
+    接产线时可保留同一套界面，把数据源换成 OPC UA / Modbus TCP 采集网关（PLC、智能电表、蒸汽流量计、水表、燃气表）与 MES/ERP 工单接口即可。
+    指标口径：单位产品综合能耗按折标煤计算（电按当量值 0.1229 kgce/kWh、蒸汽按 1.0 MPa 饱和汽 0.1286 kgce/kg、天然气 1.33 kgce/Nm³、新鲜水 0.0857 kgce/t）；对标基准 200 kgce/t 为演示设定值。真实项目系数与限值应按企业能源计量制度及适用标准取值。
+  </p>
+</div>
+
+<!-- SECTION: markup templates -->
+<template id="tpl-mc">
+  <article class="mc" tabindex="0">
+    <div class="mc-h">
+      <span class="mc-dot"></span><span class="mc-code"></span><span class="mc-type"></span><span class="mc-st"></span>
+    </div>
+    <div class="mc-main">
+      <div class="mc-temp"><span class="t-val"></span><u>℃</u></div>
+      <div class="mc-side">
+        <div><span class="t-target"></span><small>目标℃</small></div>
+        <div><span class="t-remain"></span><small>剩余min</small></div>
+      </div>
+    </div>
+    <div class="mc-phase"><span class="t-phase"></span><span class="t-steps"></span></div>
+    <div class="prog"><i class="t-prog"></i></div>
+    <dl class="mc-grid">
+      <div><dt>热熔箱</dt><dd class="v-heat"></dd></div>
+      <div><dt>主电机</dt><dd class="v-rpm"></dd></div>
+      <div><dt>电流</dt><dd class="v-cur"></dd></div>
+      <div><dt>布速</dt><dd class="v-spd"></dd></div>
+      <div><dt>缸压</dt><dd class="v-prs"></dd></div>
+      <div><dt>pH</dt><dd class="v-ph"></dd></div>
+    </dl>
+    <div class="mc-f">
+      <span class="f-order"></span><span class="f-color"></span><span class="f-energy"></span>
+    </div>
+  </article>
+</template>
+
+<template id="tpl-ec">
+  <div class="ec">
+    <div class="ec-top"><span class="ec-ico"></span><span class="ec-name"></span><span class="ec-tag num" style="margin-left:auto"></span></div>
+    <div class="ec-v"><span class="ec-now"></span><u class="ec-unit"></u></div>
+    <div class="ec-row"><span>今日累计</span><b class="ec-day"></b></div>
+    <div class="ec-row"><span>折标煤 / 成本</span><b class="ec-cost"></b></div>
+    <canvas class="ec-spark spark"></canvas>
+  </div>
+</template>
+
+<template id="tpl-cp">
+  <tr>
+    <td class="mono c-tag"></td><td class="c-name"></td><td class="c-group" style="color:var(--tx2)"></td>
+    <td class="mono c-mc" style="color:var(--tx2)"></td><td class="mono c-val" style="font-weight:700"></td>
+    <td class="c-unit" style="color:var(--tx3)"></td><td class="mono c-rg" style="color:var(--tx3)"></td>
+    <td><canvas class="spark c-spark"></canvas></td>
+    <td><span class="st c-st"><i class="lv"></i><span></span></span></td>
+    <td class="mono c-time" style="color:var(--tx3)"></td>
+  </tr>
+</template>
+
+<template id="tpl-od">
+  <tr>
+    <td class="mono o-id"></td><td class="o-cust"></td><td class="o-fab" style="color:var(--tx2)"></td>
+    <td class="o-color"></td><td class="mono o-mc" style="color:var(--tx2)"></td>
+    <td class="mono o-bat"></td><td class="mono o-kw"></td>
+    <td><span class="pbar"><span class="track"><i></i></span><b class="o-pc"></b></span></td>
+    <td class="mono o-ratio"></td><td class="mono o-eui"></td>
+    <td><span class="st o-st"><i class="lv"></i><span></span></span></td>
+    <td class="mono o-due" style="color:var(--tx2)"></td>
+  </tr>
+</template>
+
+<template id="tpl-al">
+  <tr>
+    <td class="mono a-time"></td>
+    <td><span class="st a-lv"><i class="lv"></i><span></span></span></td>
+    <td class="mono a-mc"></td><td class="a-tag" style="color:var(--tx2)"></td>
+    <td class="a-msg"></td><td class="mono a-val" style="color:var(--tx2)"></td>
+    <td class="mono a-dur"></td>
+    <td><span class="st a-st"><i class="lv"></i><span></span></span></td>
+    <td class="a-act"><span style="display:flex;gap:6px;flex-wrap:wrap"></span></td>
+  </tr>
+</template>
+
+<template id="tpl-as">
+  <div class="as-item">
+    <span class="lv"></span>
+    <span class="m"><b class="t1"></b><span class="t2"></span></span>
+    <span class="t"></span>
+  </div>
+</template>
+
+<template id="tpl-bl">
+  <div class="bl"><span></span><span class="track"><i></i></span><b></b></div>
+</template>
+
+<template id="tpl-it">
+  <div class="it"><h5></h5><div class="n"><span></span><u></u></div><div class="cmp"></div></div>
+</template>
+
+<template id="tpl-alstat">
+  <div class="ec">
+    <div class="ec-top"><span class="ec-ico"></span><span class="ec-name"></span></div>
+    <div class="ec-v"><span class="ec-now num"></span><u class="ec-unit"></u></div>
+    <div class="ec-row"><span class="l1"></span><b class="v1 num"></b></div>
+    <div class="ec-row"><span class="l2"></span><b class="v2 num"></b></div>
+  </div>
+</template>
+
+<div class="mask" id="mask"></div>
+<!-- SECTION: markup drawer -->
+<aside class="drawer" id="drawer" aria-label="单机详情">
+  <div class="dw-h">
+    <span class="code" id="dw-code">--</span>
+    <span class="mc-st" id="dw-state">--</span>
+    <span style="color:var(--tx3);font-size:12px" id="dw-type"></span>
+    <button class="btn x" id="dw-close">关闭 ✕</button>
+  </div>
+  <div class="dw-b">
+    <div>
+      <div style="font-size:11.5px;color:var(--tx3);margin-bottom:6px">工艺流程 · 当前步骤 <b class="num" id="dw-stepno"></b></div>
+      <div class="flow" id="dw-flow"></div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h3>温度工艺曲线</h3>
+        <div class="right"><select class="sel" id="dw-win"><option value="45">近 45 min</option><option value="90">近 90 min</option><option value="180">近 180 min</option></select></div>
+      </div>
+      <div class="card-b"><canvas class="cv" id="ch-dw" height="210"></canvas>
+        <div class="legend" style="margin-top:7px">
+          <span><s style="background:var(--cy)"></s>实际温度</span>
+          <span><s style="background:var(--tx3)"></s>工艺目标</span>
+          <span><s style="background:var(--rd)"></s>允许偏差带 ±2℃</span>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div style="font-size:11.5px;color:var(--tx3);margin-bottom:6px">关键组件实时值</div>
+      <div class="plist" id="dw-points"></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><div class="card-h"><h3>本缸能耗</h3></div><div class="card-b"><div class="bar-list" id="dw-energy"></div></div></div>
+      <div class="card"><div class="card-h"><h3>工单与质量</h3></div><div class="card-b"><div class="aside-list" id="dw-order"></div></div></div>
+    </div>
+    <div class="card"><div class="card-h"><h3>该机台报警</h3></div><div class="card-b"><div class="aside-list" id="dw-alarms"></div></div></div>
+  </div>
+  <div class="dw-f">
+    <button class="btn" data-act="recipe">下发标准工艺</button>
+    <button class="btn" data-act="pause">暂停运行</button>
+    <button class="btn" data-act="ack">复位该机报警</button>
+    <button class="btn" data-act="his">调取批次追溯</button>
+  </div>
+</aside>
+<div class="toasts" id="toasts"></div>
+
+<script>
+"use strict";
+/* SECTION: utils */
+const $=(s,r)=>(r||document).querySelector(s);
+const $$=(s,r)=>Array.prototype.slice.call((r||document).querySelectorAll(s));
+function rnd(a,b){return a+Math.random()*(b-a)}
+function ri(a,b){return Math.floor(rnd(a,b+1))}
+function pick(arr){return arr[ri(0,arr.length-1)]}
+function clamp(v,a,b){return v<a?a:(v>b?b:v)}
+function fmt(v,d){const p=Math.pow(10,d||0);const n=Math.round(v*p)/p;return n.toLocaleString('zh-CN',{minimumFractionDigits:d||0,maximumFractionDigits:d||0})}
+function pad2(n){return n<10?'0'+n:''+n}
+function hms(dt){return pad2(dt.getHours())+':'+pad2(dt.getMinutes())+':'+pad2(dt.getSeconds())}
+function hm(dt){return pad2(dt.getHours())+':'+pad2(dt.getMinutes())}
+function clone(id){return $('#'+id).content.firstElementChild.cloneNode(true)}
+function toast(msg,kind){
+  const box=$('#toasts');const el=document.createElement('div');
+  el.className='toast'+(kind?' '+kind:'');
+  const i=document.createElement('i');const s=document.createElement('span');
+  s.textContent=msg;el.appendChild(i);el.appendChild(s);box.appendChild(el);
+  setTimeout(()=>{el.style.transition='opacity .4s, transform .4s';el.style.opacity='0';el.style.transform='translateY(10px)';setTimeout(()=>el.remove(),420)},2600);
+}
+const C={cy:'#31dcff',gr:'#2ee08a',ye:'#ffc247',or:'#ff9147',rd:'#ff5566',pu:'#a883ff',bl:'#5f8dff',tx3:'#5d7392',line:'rgba(84,140,210,.18)'};
+const F_COEF={kwh:0.1229,steam:0.1286,gas:1.33,water:0.0857};/* kgce/单位：电按当量值，蒸汽按1.0MPa饱和汽 */
+const BASE_EUI=200;/* 车间对标基准 kgce/t，可按企业能源考核制度调整 */
+const F_PRICE={kwh:0.72,steam:268,gas:3.55,water:4.6};
+const F_UNIT={kwh:'kWh',steam:'kg',gas:'Nm³',water:'m³'};
+
+/* SECTION: data config */
+const PHASES=['准备','进水','化料进料','升温','保温','降温','排水','水洗','皂洗','固色','降温排水','出布'];
+const TGT={'准备':30,'进水':45,'化料进料':60,'升温':0,'保温':0,'降温':75,'排水':70,'水洗':60,'皂洗':92,'固色':62,'降温排水':50,'出布':40};
+const MACHINES_N=36;
+const TYPE_DEF=[
+  {name:'溢流染色机',pre:'OF',ht:true,load:[300,900]},
+  {name:'气流染色机',pre:'AF',ht:true,load:[250,600]},
+  {name:'筒子纱染色机',pre:'YB',ht:true,load:[120,400]},
+  {name:'热熔染色机',pre:'HR',ht:false,load:[400,1200]},
+  {name:'冷轧堆染色机',pre:'CD',ht:false,load:[600,1500]}
+];
+const FABRICS=['全涤针织汗布','涤棉混纺平纹','棉双面卫衣布','锦纶高弹泳布','涤纶塔丝隆','天丝混纺斜纹','腈纶毛衫纱线','涤氨罗纹'];
+const CUSTOMERS=['华孚时尚','鲁泰纺织','申洲国际','互太针织','魏桥纺织','台华新材料','盛虹集团','航民股份'];
+const COLORS=['藏青 19-4024','活性黑 BN','分散深蓝 S-5E','碰窗灰 12-0607','墨绿 19-5320','酒红 19-1725','本白','浅卡其 13-0609','宝蓝 19-4050','炭灰 19-3810'];
+const LEVELS={1:'紧急',2:'重要',3:'提示'};
+const LEVEL_COLOR={1:C.rd,2:C.ye,3:C.cy};
+
+/* 组件（测点）定义：几十个量、可搜索可筛选 */
+const COMP_DEF=[
+  {k:'heat',n:'热熔箱温度',g:'温控类',u:'℃',lo:150,hi:215,ok:[150,210],unit1:0.5},
+  {k:'t1',n:'染缸温度 PT100-1',g:'温控类',u:'℃',lo:20,hi:138,ok:[0,135]},
+  {k:'t2',n:'染缸温度 PT100-2',g:'温控类',u:'℃',lo:20,hi:138,ok:[0,135]},
+  {k:'t3',n:'回液温度',g:'温控类',u:'℃',lo:20,hi:135,ok:[0,132]},
+  {k:'sv',n:'蒸汽调节阀开度',g:'执行类',u:'%',lo:0,hi:100,ok:[0,95]},
+  {k:'cv',n:'冷却水阀开度',g:'执行类',u:'%',lo:0,hi:100,ok:[0,90]},
+  {k:'rpm',n:'主循环电机转速',g:'驱动类',u:'rpm',lo:0,hi:1200,ok:[100,1050]},
+  {k:'cur',n:'主循环电机电流',g:'驱动类',u:'A',lo:0,hi:90,ok:[5,72]},
+  {k:'hz',n:'主循环变频器频率',g:'驱动类',u:'Hz',lo:0,hi:60,ok:[15,55]},
+  {k:'pump',n:'加料泵电流',g:'驱动类',u:'A',lo:0,hi:24,ok:[1,20]},
+  {k:'spd',n:'布速',g:'工艺类',u:'m/min',lo:0,hi:560,ok:[80,520]},
+  {k:'noz',n:'喷嘴压力',g:'工艺类',u:'MPa',lo:0,hi:0.6,ok:[0.08,0.48],d:2},
+  {k:'prs',n:'缸内压力',g:'工艺类',u:'MPa',lo:0,hi:0.45,ok:[0,0.36],d:2},
+  {k:'lvl',n:'染缸液位',g:'工艺类',u:'%',lo:0,hi:100,ok:[45,92]},
+  {k:'ph',n:'染液 pH 值',g:'质量类',u:'',lo:0,hi:14,ok:[3.5,11],d:1},
+  {k:'bath',n:'浴比',g:'质量类',u:'1:x',lo:4,hi:12,ok:[4.5,10],d:1},
+  {k:'dye',n:'色度值 ΔE',g:'质量类',u:'',lo:0,hi:6,ok:[0,1.4],d:2},
+  {k:'flame',n:'燃烧器火焰状态',g:'安全类',u:'',lo:0,hi:1,ok:[1,1]},
+  {k:'door',n:'缸门限位开关',g:'安全类',u:'',lo:0,hi:1,ok:[1,1]},
+  {k:'exh',n:'排风温度',g:'辅助类',u:'℃',lo:20,hi:120,ok:[25,95]},
+  {k:'air',n:'压缩空气压力',g:'辅助类',u:'MPa',lo:0,hi:1,ok:[0.45,0.8],d:2},
+  {k:'vib',n:'主电机振动',g:'设备类',u:'mm/s',lo:0,hi:12,ok:[0,4.5],d:1}
+];
+const SHARED_DEF=[
+  {n:'锅炉分汽缸压力',g:'公用工程',u:'MPa',ok:[0.6,1.1],d:2},
+  {n:'蒸汽总管流量',g:'公用工程',u:'t/h',ok:[2,26],d:1},
+  {n:'空压站露点',g:'公用工程',u:'℃',ok:[-28,3],d:1},
+  {n:'冷却塔出水温度',g:'公用工程',u:'℃',ok:[22,38],d:1},
+  {n:'回用水池 pH',g:'公用工程',u:'',ok:[6,9],d:1},
+  {n:'污水处理站流量',g:'公用工程',u:'m³/h',ok:[40,320],d:0},
+  {n:'化料间称重',g:'公用工程',u:'kg',ok:[10,900],d:0},
+  {n:'车间总配电功率因数',g:'公用工程',u:'',ok:[0.9,1],d:2},
+  {n:'余热回收器出口水温',g:'公用工程',u:'℃',ok:[45,88],d:1},
+  {n:'中水回用率',g:'公用工程',u:'%',ok:[35,68],d:1}
+];
+
+/* SECTION: state */
+const S={
+  tick:0,machines:[],points:[],orders:[],alarms:[],alarmSeq:1,running:true,rate:2000,
+  tab:'overview',ovFilter:{s:'all',q:'',sort:'code'},
+  cp:{q:'',group:'all',machine:'all',status:'all',page:0,size:24,byDev:false},
+  od:{s:'all',q:''},al:{s:'all',open:false},
+  en:{type:'kwh',range:'day'},
+  energy:{kwh:0,steam:0,gas:0,water:0},hist:{},todayKg:0,planKg:0,
+  sel:null,timer:null
+};
+
+/* SECTION: build data */
+function buildMachines(){
+  const counters={};
+  for(let i=0;i<MACHINES_N;i++){
+    const t=TYPE_DEF[i%TYPE_DEF.length];
+    counters[t.pre]=(counters[t.pre]||0)+1;
+    const code=t.pre+'-'+pad2(counters[t.pre]);
+    const stateRoll=Math.random();
+    let state='run';
+    if(stateRoll>0.94)state='fault';else if(stateRoll>0.88)state='idle';else if(stateRoll>0.85)state='maint';
+    const ph=state==='run'?ri(0,PHASES.length-1):ri(0,3);
+    const load=ri(t.load[0],t.load[1]);
+    const m={
+      code:code,type:t.name,ht:t.ht,state:state,phIdx:ph,load:load,remain:ri(4,28),
+      target:t.ht?rnd(128,132):rnd(95,99),temp:rnd(40,90),
+      heat:rnd(160,200),rpm:state==='run'?rnd(380,980):rnd(0,40),cur:rnd(12,68),hz:rnd(18,54),
+      spd:rnd(120,520),noz:rnd(.12,.46),prs:state==='run'?(t.ht?rnd(.18,.34):rnd(.02,.1)):.01,
+      lvl:rnd(55,90),ph:rnd(4.2,10.5),bath:rnd(4.8,9.5),dye:rnd(.2,1.6),vib:rnd(.8,4.2),
+      air:rnd(.5,.78),exh:rnd(38,92),flame:1,door:1,sv:rnd(10,88),cv:rnd(0,42),pump:rnd(3,18),
+      kwh:0,steam:0,gas:0,water:0,runMin:ri(20,300),batches:ri(1,6),
+      eui:rnd(152,236),fps:rnd(93,99.4),hist:[],el:null
+    };
+    for(let h=0;h<200;h++)m.hist.push({v:m.target*0.6+rnd(-3,3),t:m.target});
+    m.order=pick(S.orders||[]);
+    S.machines.push(m);
+  }
+}
+function buildOrders(){
+  const cust=CUSTOMERS,cols=COLORS,fab=FABRICS;
+  for(let i=0;i<16;i++){
+    const plan=ri(4,18)*1000;
+    const done=Math.round(plan*rnd(i<10?0.25:0.98,i<10?0.9:1));
+    let st='run';
+    if(i>=11&&i<13)st='wait';else if(i>=13)st='done';else if(i===9)st='re';
+    const d=new Date(Date.now()+ri(1,14)*86400000);
+    S.orders.push({
+      id:'DY'+(2601+i*7)+'-'+pad2(101+i),cust:pick(cust),fab:pick(fab),gsm:ri(90,320),
+      color:pick(cols),proc:pick(['一浴法','两浴法','还原清洗','活性套色','分散热熔']),
+      plan:plan,done:done,batTotal:ri(6,26),batDone:ri(1,8),st:st,
+      ratio:rnd(4.8,9.2),eui:rnd(150,248),fps:rnd(92,99.6),
+      due:pad2(d.getMonth()+1)+'-'+pad2(d.getDate()),machines:[]
+    });
+  }
+}
+function assignOrders(){
+  S.machines.forEach(m=>{
+    const pool=S.orders.filter(o=>o.st==='run'||o.st==='re');
+    m.order=pick(pool);
+    if(m.order&&m.order.machines.indexOf(m.code)<0)m.order.machines.push(m.code);
+  });
+}
+function buildPoints(){
+  let seq=1;
+  S.machines.forEach(m=>{
+    COMP_DEF.forEach(cd=>{
+      S.points.push({
+        tag:(cd.k==='cur'?'I':cd.k==='rpm'?'N':'T')+pad2(seq)+'.'+pad2(1),
+        mcode:m.code,mid:S.machines.indexOf(m),def:cd,shared:false,
+        v:m[cd.k]!==undefined?m[cd.k]:0,hist:[],st:'ok',up:new Date()
+      });
+      seq++;
+    });
+  });
+  SShared:for(let i=0;i<SHARED_DEF.length;i++){
+    const sd=SHARED_DEF[i];
+    S.points.push({tag:'UT-'+pad2(i+1),mcode:'公用工程',mid:-1,def:Object.assign({k:'v'},sd),shared:true,
+      v:sd.ok[0]+Math.random()*(sd.ok[1]-sd.ok[0]),hist:[],st:'ok',up:new Date()});
+  }
+  S.points.forEach(p=>{
+    for(let h=0;h<14;h++)p.hist.push(p.v*(1+rnd(-.03,.03)));
+  });
+}
+function buildEnergyHist(){
+  const ranges={day:{n:24,lab:'时'},week:{n:7,lab:'日'},month:{n:30,lab:'日'}};
+  Object.keys(ranges).forEach(rk=>{
+    const n=ranges[rk].n;S.hist[rk]={};
+    ['kwh','steam','gas','water'].forEach(k=>{
+      const base={kwh:1180,steam:9.4,gas:76,water:112}[k];
+      const arr=[];
+      for(let i=0;i<n;i++){
+        const shape=rk==='day'?(0.55+0.45*Math.sin((i-4)/24*Math.PI*2)+(i>7&&i<21?0.35:0)):1;
+        arr.push(base*shape*rnd(.82,1.16));
+      }
+      S.hist[rk][k]=arr;
+    });
+    S.hist[rk].out=[];S.hist[rk].plan=[];
+    for(let i=0;i<n;i++){
+      const o=(rk==='day'?13.6:rk==='week'?318:74)*rnd(.7,1.25);
+      S.hist[rk].out.push(o);S.hist[rk].plan.push(o*rnd(.94,1.12));
+    }
+  });
+  S.energy={kwh:36400,steam:58.2,gas:2480,water:4060};
+  S.todayKg=82.4*1000;S.planKg=92*1000;
+}
+function buildAlarms(){
+  const seeds=[
+    ['OF-03','cur','主循环电机电流过载，疑似喷嘴堵塞',2],
+    ['AF-08','t1','实际温度低于工艺目标 3.2℃，保温段偏差越限',1],
+    ['HR-04','heat','热熔箱温度超上限，加热器可能失控',1],
+    ['YB-02','ph','染液 pH 偏离工艺窗口，建议补加缓冲剂',2],
+    ['OF-05','lvl','染缸液位偏低，循环可能带气',2],
+    ['CD-01','vib','主电机振动趋势上升，建议安排点检',3],
+    ['公用工程','air','空压站压力波动，影响气动阀动作',3],
+    ['OF-11','noz','喷嘴压力偏低，布速不稳',2],
+    ['AF-06','door','缸门限位未确认，禁止启动程序',1]
+  ];
+  const now=Date.now();
+  seeds.forEach((s,i)=>{
+    const m=S.machines.filter(x=>x.code===s[0])[0];
+    const def=s[0].indexOf('公用')>=0?{u:'MPa',ok:[0.45,0.8],d:2}:COMP_DEF.filter(c=>c.k===s[1])[0];
+    const val=m?(m[s[1]]||rnd(1,9)):rnd(.3,.44);
+    S.alarms.push({id:S.alarmSeq++,t:new Date(now-(i*7+ri(1,5))*60000),mc:s[0],tag:s[1],def:def,
+      msg:s[2],lv:s[3],val:val,dur:ri(1,42),st:i<3?'new':(i<6?'ack':'closed'),owner:pick(['张工','李工','王工','赵工'])});
+  });
+}
+
+/* SECTION: sim step */
+function stepMachine(m){
+  if(m.state==='fault'){
+    m.rpm=Math.max(0,m.rpm*rnd(.7,.9));m.cur=clamp(m.cur*rnd(.5,.8),0,90);
+    m.sv=0;m.temp+=(28-m.temp)*0.02+rnd(-.3,.3);return;
+  }
+  if(m.state==='idle'||m.state==='maint'){
+    m.temp+=(26-m.temp)*0.03+rnd(-.2,.2);m.rpm=0;m.cur=rnd(0,3);return;
+  }
+  const phase=PHASES[m.phIdx];
+  let target=TGT[phase];
+  if(phase==='升温'||phase==='保温')target=m.ht?130:98;
+  if(phase==='升温')target=clamp(m.temp+rnd(1.2,2.6),20,m.ht?132:100);
+  m.target=target;
+  m.temp+=(target-m.temp)*0.07+rnd(-.45,.45);
+  m.heat=clamp(m.heat+rnd(-1.6,1.7),m.ht?150:130,m.ht?219:196);
+  m.rpm=clamp(m.rpm+rnd(-26,26),90,1150);
+  m.spd=clamp(m.spd+rnd(-14,14),60,545);
+  m.cur=clamp(11+m.rpm/1150*46+rnd(-3,3.4),2,92);
+  m.hz=clamp(m.cur/1.25+rnd(-1.5,1.5),12,58);
+  m.noz=clamp(m.noz+rnd(-.02,.02),.05,.56);
+  m.prs=clamp(m.prs+rnd(-.012,.013),0,m.ht?.38:.14);
+  m.lvl=clamp(m.lvl+rnd(-1.3,1.3),38,96);
+  m.ph=clamp(m.ph+rnd(-.08,.08),3,12);
+  m.dye=clamp(m.dye+rnd(-.06,.07),0,4.4);
+  m.vib=clamp(m.vib+rnd(-.2,.22),.4,9);
+  m.sv=clamp(m.sv+rnd(-4,4.2),0,100);m.cv=clamp(m.cv+rnd(-4,4),0,100);
+  m.pump=clamp(m.pump+rnd(-.9,.9),1,23);m.air=clamp(m.air+rnd(-.02,.02),.4,.85);
+  m.exh=clamp(m.exh+rnd(-1.4,1.4),26,118);
+  m.hist.push({v:m.temp,t:m.target});if(m.hist.length>220)m.hist.shift();
+  if(S.tick%4===0){
+    m.remain-=1;m.runMin+=1;
+    if(m.remain<=0){
+      m.phIdx++;m.remain=ri(4,26);
+      if(m.phIdx>=PHASES.length){
+        m.phIdx=0;m.batches++;
+        if(m.order){m.order.done=Math.min(m.order.plan,m.order.done+m.load);m.order.batDone=Math.min(m.order.batTotal,m.order.batDone+1)}
+        S.todayKg+=m.load;
+        m.state='idle';m.eui=clamp(m.eui+rnd(-9,9),140,262);
+      }
+    }
+  }
+  const dt=S.rate/1000;
+  m.kwhInst=8+m.rpm/1150*46*1.72+(m.state==='run'?4:0);
+  m.steamInst=m.temp>70?(m.ht?285:190)*rnd(.75,1.18):rnd(8,34);
+  m.gasInst=m.ht&&m.temp>60?rnd(6,17):rnd(.4,2);
+  m.waterInst=phase==='进水'||phase==='水洗'||phase==='皂洗'?rnd(4.5,12):rnd(.2,1.6);
+  S.energy.kwh+=m.kwhInst*dt/60;
+  S.energy.steam+=m.steamInst*dt/60/1000;
+  S.energy.gas+=m.gasInst*dt/60;
+  S.energy.water+=m.waterInst*dt/60;
+}
+function phaseGroup(m){
+  if(m.state==='fault')return 'fault';
+  if(m.state==='idle'||m.state==='maint')return 'idle';
+  const p=PHASES[m.phIdx];
+  if(p==='升温'||p==='保温')return 'heat';
+  if(p==='水洗'||p==='皂洗'||p==='固色'||p==='降温'||p==='降温排水'||p==='排水')return 'wash';
+  return 'run';
+}
+function pointStatus(p){
+  const ok=p.def.ok;
+  if(p.off)return 'off';
+  if(p.v<ok[0]-0.0001||p.v>ok[1]+0.0001)return p.v<ok[0]*0.6||p.v>ok[1]*1.25?'alarm':'warn';
+  const margin=(ok[1]-ok[0])*0.08;
+  if(p.v>ok[1]-margin||p.v<ok[0]+margin)return 'warn';
+  return 'ok';
+}
+function raiseAlarm(m,p,lv,msg){
+  const mc=m?m.code:'公用工程';
+  const dup=S.alarms.filter(a=>a.st!=='closed'&&a.mc===mc&&a.tag===(p&&p.tag))[0];
+  if(dup){dup.dur+=1;dup.t2=Date.now();return}
+  S.alarms.unshift({id:S.alarmSeq++,t:new Date(),mc:mc,tag:p?p.tag||p.def.k:'',def:p?p.def:{u:'',ok:[0,1],d:1},
+    msg:msg,lv:lv,val:p?p.v:0,dur:1,st:'new',owner:'—'});
+  if(S.alarms.length>160)S.alarms.pop();
+}
+function tick(){
+  if(!S.running)return;
+  S.tick++;
+  S.machines.forEach(stepMachine);
+  /* 组件值与机台联动 */
+  S.points.forEach(p=>{
+    if(p.shared){
+      const d=p.def;const mid=(d.ok[0]+d.ok[1])/2;
+      p.v=clamp(p.v+(mid-p.v)*0.05+rnd(-.06,.06)*(d.ok[1]-d.ok[0]),d.ok[0]*.6,d.ok[1]*1.4);
+    }else{
+      const m=S.machines[p.mid];const d=p.def;
+      let base=d.k==='cur'?m.cur:d.k==='rpm'?m.rpm:d.k==='hz'?m.hz:d.k==='spd'?m.spd:d.k==='noz'?m.noz:
+        d.k==='prs'?m.prs:d.k==='lvl'?m.lvl:d.k==='ph'?m.ph:d.k==='bath'?m.bath:d.k==='dye'?m.dye:d.k==='vib'?m.vib:
+        d.k==='air'?m.air:d.k==='exh'?m.exh:d.k==='sv'?m.sv:d.k==='cv'?m.cv:d.k==='pump'?m.pump:d.k==='heat'?m.heat:
+        d.k==='t1'?m.temp:d.k==='t2'?m.temp-rnd(.4,1.6):d.k==='t3'?m.temp-rnd(1.5,4):d.k==='flame'?(m.state==='run'?1:0):d.k==='door'?1:0;
+      p.v=clamp(base+rnd(-1,1)*(d.ok[1]-d.ok[0])*0.012,d.lo,d.hi);
+      p.up=new Date();
+    }
+    p.hist.push(p.v);if(p.hist.length>14)p.hist.shift();
+    p.st=pointStatus(p);
+  });
+  /* 报警生成 */
+  S.machines.forEach(m=>{
+    if(m.state==='run'&&PHASES[m.phIdx]==='保温'&&m.target-m.temp>3.2&&Math.random()<.1)raiseAlarm(m,{tag:'t1',def:{k:'t1',n:'染缸温度 PT100-1',u:'℃',ok:[0,135],d:1},v:m.temp},'1','实际温度低于工艺目标 '+fmt(m.target-m.temp,1)+'℃，保温段偏差越限');
+    if(m.heat>212&&Math.random()<.08)raiseAlarm(m,{tag:'heat',def:{k:'heat',n:'热熔箱温度',u:'℃',ok:[150,210],d:1},v:m.heat},'1','热熔箱温度超上限，需检查加热回路与PID输出');
+    if(m.cur>74&&Math.random()<.07)raiseAlarm(m,{tag:'cur',def:{k:'cur',n:'主循环电机电流',u:'A',ok:[5,72],d:1},v:m.cur},'2','主循环电机电流越上限，注意喷嘴堵塞与叠布');
+    if(m.dye>1.5&&Math.random()<.04)raiseAlarm(m,{tag:'dye',def:{k:'dye',n:'色度值 ΔE',u:'',ok:[0,1.4],d:2},v:m.dye},'3','ΔE 接近放行限，建议取样对色');
+  });
+  if(S.tick%6===0)renderActive();
+  updateTop();
+}
+
+/* SECTION: top kpi */
+function totals(){
+  let run=0,fault=0,idle=0,heat=0,wash=0,kw=0,stm=0,wt=0,gs=0;
+  S.machines.forEach(m=>{
+    const g=phaseGroup(m);
+    if(g==='fault')fault++;else if(g==='idle')idle++;else{run++;if(g==='heat')heat++;if(g==='wash')wash++}
+    kw+=(m.kwhInst||0);stm+=(m.steamInst||0);wt+=(m.waterInst||0);gs+=(m.gasInst||0);
+  });
+  return {run:run,fault:fault,idle:idle,heat:heat,wash:wash,kw:kw,stm:stm,wt:wt,gs:gs};
+}
+function energyTotalsDay(){
+  const h=S.hist.day;const last=(arr)=>arr[h.kwh.length-1];
+  return {kwh:last(h.kwh),steam:last(h.steam),gas:last(h.gas),water:last(h.water),out:last(h.out)};
+}
+function kgceTotal(e){
+  return e.kwh*F_COEF.kwh+e.steam*1000*F_COEF.steam+e.gas*F_COEF.gas+e.water*F_COEF.water;
+}
+function euiToday(){
+  const t=S.todayKg/1000;
+  return t>0?kgceTotal(S.energy)/t:0;
+}
+function updateTop(){
+  const t=totals();
+  $('#kpi-run').textContent=t.run;
+  $('#kpi-total').textContent=S.machines.length;
+  $('#tb-total').textContent=S.machines.length;
+  $('#kpi-run-s').textContent='运行率 '+fmt(t.run/S.machines.length*100,1)+'% · 升温保温 '+t.heat+' 台 · 水洗皂洗 '+t.wash+' 台';
+  $('#kpi-out').textContent=fmt(S.todayKg/1000,1);
+  $('#kpi-plan').textContent=fmt(S.todayKg/S.planKg*100,1)+'%';
+  $('#kpi-batch').textContent=S.machines.filter(m=>m.state==='run').length;
+  $('#kpi-pow').textContent=fmt(t.kw,0);
+  $('#kpi-pow-s').textContent='蒸汽 '+fmt(t.stm,0)+' kg/h · 水 '+fmt(t.wt,1)+' m³/h · 燃气 '+fmt(t.gs,1)+' Nm³/h';
+  const eui=euiToday();
+  $('#kpi-eui').textContent=fmt(eui,1);
+  const diff=eui-BASE_EUI;
+  const el=$('#kpi-eui-c');el.textContent=(diff>0?'+':'')+fmt(diff,1)+' kgce/t';
+  el.className='num '+(diff>0?'down':'up');
+  const fps=S.orders.filter(o=>o.st==='run'||o.st==='re');
+  const avg=fps.length?fps.reduce((a,b)=>a+b.fps,0)/fps.length:96;
+  $('#kpi-fps').textContent=fmt(avg,1);
+  $('#kpi-re').textContent=S.machines.filter(m=>m.order&&m.order.st==='re').length;
+  $('#kpi-dc').textContent=S.orders.filter(o=>o.eui>BASE_EUI).length;
+  const open=S.alarms.filter(a=>a.st!=='closed');
+  const byLevel=n=>open.filter(a=>a.lv==String(n)||a.lv===n).length;
+  $('#kpi-al').textContent=open.filter(a=>a.st==='new').length;
+  $('#kpi-al1').textContent=byLevel(1);$('#kpi-al2').textContent=byLevel(2);$('#kpi-al3').textContent=byLevel(3);
+  const bd=$('#bd-al');bd.textContent=open.filter(a=>a.st==='new').length;
+  bd.style.display=open.filter(a=>a.st==='new').length?'':'none';
+  $('#bd-cp').textContent=S.points.length;
+  $('#cp-total').textContent=S.points.length;
+  $('#foot-points').textContent=S.points.length;
+  $('#foot-machines').textContent=S.machines.length;
+  const now=new Date();
+  $('#clock').textContent=hms(now);
+  const hh=now.getHours();
+  $('#shift').textContent=hh>=8&&hh<16?'甲班':(hh>=16&&hh<24?'乙班':'丙班');
+}
+
+/* SECTION: overview render */
+function buildMachineCards(){
+  const grid=$('#ov-grid');grid.innerHTML='';
+  S.machines.forEach(m=>{
+    const el=clone('tpl-mc');
+    m.el=el;
+    el.querySelector('.mc-code').textContent=m.code;
+    el.querySelector('.mc-type').textContent=m.type;
+    el.addEventListener('click',()=>openDrawer(m));
+    el.addEventListener('keydown',e=>{if(e.key==='Enter')openDrawer(m)});
+    grid.appendChild(el);
+  });
+}
+function updateMachineCard(m){
+  const el=m.el;if(!el)return;
+  const g=phaseGroup(m);
+  const color=g==='fault'?C.rd:(g==='heat'?C.or:(g==='wash'?C.cy:(g==='idle'?C.tx3:C.gr)));
+  const stTxt=m.state==='fault'?'故障停机':(m.state==='idle'?'待机出布':(m.state==='maint'?'计划保养':PHASES[m.phIdx]));
+  el.style.setProperty('--st',color);
+  el.classList.toggle('al',m.state==='fault');
+  el.querySelector('.mc-st').textContent=stTxt;
+  el.querySelector('.t-val').textContent=fmt(m.temp,1);
+  el.querySelector('.t-target').textContent=fmt(m.target,1);
+  el.querySelector('.t-remain').textContent=m.state==='run'?m.remain:'—';
+  el.querySelector('.t-phase').textContent=m.state==='run'?('步骤 '+(m.phIdx+1)+' / '+PHASES.length):'非染色工况';
+  el.querySelector('.t-steps').textContent='本缸 '+fmt(m.load,0)+' kg';
+  const prog=el.querySelector('.t-prog');
+  prog.style.width=(m.state==='run'?((m.phIdx+ (1-Math.min(1,m.remain/26)))/PHASES.length*100):0)+'%';
+  el.querySelector('.v-heat').textContent=fmt(m.heat,1)+'℃';
+  el.querySelector('.v-rpm').textContent=fmt(m.rpm,0)+'rpm';
+  el.querySelector('.v-cur').textContent=fmt(m.cur,1)+'A';
+  el.querySelector('.v-spd').textContent=fmt(m.spd,0)+'m/min';
+  el.querySelector('.v-prs').textContent=fmt(m.prs,2)+'MPa';
+  el.querySelector('.v-ph').textContent=fmt(m.ph,1);
+  el.querySelector('.f-order').textContent=m.order?m.order.id:'—';
+  el.querySelector('.f-color').textContent=m.order?m.order.color:'—';
+  el.querySelector('.f-energy').textContent='单耗 '+fmt(m.eui,1)+' kgce/t';
+}
+function ovList(){
+  const f=S.ovFilter;
+  let arr=S.machines.filter(m=>{
+    const g=phaseGroup(m);
+    if(f.s==='run'&&g!=='run')return false;
+    if(f.s==='heat'&&g!=='heat')return false;
+    if(f.s==='wash'&&g!=='wash')return false;
+    if(f.s==='fault'&&g!=='fault')return false;
+    if(f.s==='idle'&&g!=='idle')return false;
+    if(f.q){
+      const q=f.q.toLowerCase();
+      const hay=(m.code+m.type+(m.order?m.order.id+m.order.color+m.order.cust:'')).toLowerCase();
+      if(hay.indexOf(q)<0)return false;
+    }
+    return true;
+  });
+  if(f.sort==='temp')arr.sort((a,b)=>b.temp-a.temp);
+  else if(f.sort==='remain')arr.sort((a,b)=>(a.state==='run'?a.remain:9999)-(b.state==='run'?b.remain:9999));
+  else if(f.sort==='alarm')arr.sort((a,b)=>(b.state==='fault'?1:0)-(a.state==='fault'?1:0)||a.code.localeCompare(b.code));
+  else arr.sort((a,b)=>a.code.localeCompare(b.code));
+  return arr;
+}
+function renderOverview(){
+  const arr=ovList();const grid=$('#ov-grid');
+  const ids=arr.map(m=>m.code);
+  S.machines.forEach(m=>{if(m.el&&ids.indexOf(m.code)<0&&m.el.parentNode)m.el.parentNode.removeChild(m.el)});
+  /* 按当前排序顺序重新挂载，保证缸温/剩余时间/报警优先排序真正生效 */
+  arr.forEach(m=>{grid.appendChild(m.el)});
+  arr.forEach(updateMachineCard);
+  $('#ov-empty').style.display=arr.length?'none':'';
+  const counts={all:S.machines.length};
+  S.machines.forEach(m=>{const g=phaseGroup(m);counts[g]=(counts[g]||0)+1});
+  $('#c-all').textContent=counts.all;
+  $('#c-run').textContent=(counts.run||0);
+  $('#c-heat').textContent=(counts.heat||0);
+  $('#c-wash').textContent=(counts.wash||0);
+  $('#c-fault').textContent=(counts.fault||0);
+  $('#c-idle').textContent=(counts.idle||0);
+  renderStateChart(counts);
+  renderOvEnergy();
+  renderOvAlarms();
+}
+function renderOvEnergy(){
+  const t=totals();
+  const rows=[
+    ['电力',t.kw,3200,'var(--ye)',fmt(t.kw,0)+' kW'],
+    ['蒸汽',t.stm,1600,'var(--cy)',fmt(t.stm,0)+' kg/h'],
+    ['天然气',t.gs,420,'var(--or)',fmt(t.gs,1)+' Nm³/h'],
+    ['工业水',t.wt,280,'var(--bl)',fmt(t.wt,1)+' m³/h']
+  ];
+  fillBarList('#ov-energy',rows);
+}
+function fillBarList(sel,rows){
+  const box=$(sel);
+  if(box.children.length!==rows.length){box.innerHTML='';rows.forEach(()=>box.appendChild(clone('tpl-bl')))}
+  rows.forEach((r,i)=>{
+    const el=box.children[i];
+    el.querySelector('span').textContent=r[0];
+    const tr=el.querySelector('.track i');
+    tr.style.width=clamp(r[1]/r[2]*100,2,100)+'%';
+    tr.parentNode.parentNode.style.setProperty('--bl-c',r[3]);
+    el.querySelector('b').textContent=(r[4]!==undefined?r[4]:fmt(r[1],1));
+  });
+}
+
+/* SECTION: charts */
+function prep(cv,hint){
+  if(!cv.dataset.h){
+    const attrH=parseInt(cv.getAttribute('height'),10);
+    const cssH=parseFloat(getComputedStyle(cv).height);
+    const base=(attrH>0?attrH:0)||((cssH>0&&cssH<400)?cssH:0)||hint||180;
+    cv.dataset.h=base;cv.style.height=base+'px';
+  }
+  const H=parseFloat(cv.dataset.h);
+  const w=cv.clientWidth||parseInt(getComputedStyle(cv).width,10)||320;
+  const dpr=window.devicePixelRatio||1;
+  cv.width=Math.round(w*dpr);cv.height=Math.round(H*dpr);
+  const c=cv.getContext('2d');
+  c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,w,H);
+  c.font='11px '+getComputedStyle(document.body).fontFamily;
+  return {c:c,w:w,h:H};
+}
+function axis(c,x0,y0,x1,y1,ymax,labels,unit){
+  c.strokeStyle=C.line;c.lineWidth=1;c.fillStyle=C.tx3;
+  for(let i=0;i<=4;i++){
+    const y=y1-(y1-y0)*i/4;
+    c.beginPath();c.moveTo(x0,y+.5);c.lineTo(x1,y);c.stroke();
+    c.textAlign='right';c.textBaseline='middle';
+    c.fillText(fmt(ymax*i/4,ymax<10?2:0),x0-6,y);
+  }
+  c.textAlign='center';c.textBaseline='top';
+  const step=Math.max(1,Math.ceil(labels.length/8));
+  labels.forEach((l,i)=>{if(i%step===0)c.fillText(l,(x0+(x1-x0)*(i+0.5)/labels.length),y1+6)});
+  if(unit){c.textAlign='left';c.fillText(unit,2,2)}
+}
+function lineChart(cv,cfg){
+  const p=prep(cv,220);const c=p.c;
+  const x0=44,y0=16,x1=p.w-12,y1=p.h-24;
+  const ymax=cfg.ymax||Math.max.apply(null,cfg.series.map(s=>Math.max.apply(null,s.data)))*1.15;
+  axis(c,x0,y0,x1,y1,ymax,cfg.labels,cfg.unit);
+  if(cfg.bands){
+    cfg.bands.forEach(b=>{
+      c.fillStyle=b.color;
+      const yA=y1-(y1-y0)*clamp(b.hi/ymax,0,1),yB=y1-(y1-y0)*clamp(b.lo/ymax,0,1);
+      c.fillRect(x0,yA,x1-x0,yB-yA);
+    });
+  }
+  cfg.series.forEach(s=>{
+    const n=s.data.length;
+    c.beginPath();
+    s.data.forEach((v,i)=>{
+      const x=x0+(x1-x0)*(i+0.5)/n,y=y1-(y1-y0)*clamp(v/ymax,0,1);
+      i?c.lineTo(x,y):c.moveTo(x,y);
+    });
+    if(s.fill){
+      c.save();c.lineTo(x0+(x1-x0)*(n-0.5)/n,y1);c.lineTo(x0+(x1-x0)*0.5/n,y1);c.closePath();
+      c.fillStyle=s.fill;c.fill();c.restore();
+    }
+    c.strokeStyle=s.color;c.lineWidth=s.width||2;
+    if(s.dash)c.setLineDash([5,4]);else c.setLineDash([]);
+    c.stroke();
+  });
+  c.setLineDash([]);
+}
+function barChart(cv,cfg){
+  const p=prep(cv,220);const c=p.c;
+  const x0=44,y0=16,x1=p.w-12,y1=p.h-24;
+  const all=cfg.groups.reduce((a,g)=>a.concat(g.values),[]);
+  const ymax=cfg.ymax||Math.max.apply(null,all)*1.15;
+  axis(c,x0,y0,x1,y1,ymax,cfg.groups.map(g=>g.label),cfg.unit);
+  const gw=(x1-x0)/cfg.groups.length;
+  cfg.groups.forEach((g,gi)=>{
+    g.values.forEach((v,vi)=>{
+      const bw=Math.min(26,gw*0.7/g.values.length);
+      const bx=x0+gw*gi+(gw-bw*g.values.length)/2+bw*vi;
+      const bh=(y1-y0)*clamp(v/ymax,0,1);
+      const grad=c.createLinearGradient(0,y1-bh,0,y1);
+      grad.addColorStop(0,g.colors[vi]);grad.addColorStop(1,'rgba(255,255,255,.06)');
+      c.fillStyle=grad;c.fillRect(bx,y1-bh,bw-2,bh);
+    });
+  });
+  if(cfg.line){
+    const n=cfg.groups.length;c.beginPath();
+    cfg.line.data.forEach((v,i)=>{
+      const x=x0+gw*(i+0.5),y=y1-(y1-y0)*clamp(v/cfg.line.max,0,1)*0.98;
+      i?c.lineTo(x,y):c.moveTo(x,y);
+    });
+    c.strokeStyle=cfg.line.color;c.lineWidth=2;c.stroke();
+    cfg.line.data.forEach((v,i)=>{
+      const x=x0+gw*(i+0.5),y=y1-(y1-y0)*clamp(v/cfg.line.max,0,1)*0.98;
+      c.beginPath();c.arc(x,y,3,0,Math.PI*2);c.fillStyle=cfg.line.color;c.fill();
+    });
+  }
+}
+function hBars(cv,items,opts){
+  const p=prep(cv,opts.h||200);const c=p.c;
+  let labelW=0;
+  items.forEach(it=>{c.font='11px '+getComputedStyle(document.body).fontFamily;labelW=Math.max(labelW,c.measureText(it.label).width)});
+  const x0=Math.min(p.w*0.42,Math.max(54,labelW+12)),x1=p.w-46;const n=items.length;const rh=p.h/n;
+  items.forEach((it,i)=>{
+    const y=rh*i+rh*0.22,bh=rh*0.5;
+    c.fillStyle=C.tx3;c.textAlign='right';c.textBaseline='middle';
+    c.fillText(it.label,x0-8,y+bh/2);
+    c.fillStyle='rgba(120,160,210,.12)';c.fillRect(x0,y,x1-x0,bh);
+    const w=(x1-x0)*clamp(it.value/opts.max,0.02,1);
+    const g=c.createLinearGradient(x0,0,x0+w,0);g.addColorStop(0,it.color||C.cy);g.addColorStop(1,'rgba(255,255,255,.35)');
+    c.fillStyle=g;c.fillRect(x0,y,w,bh);
+    c.fillStyle='#dce8f7';c.textAlign='left';
+    c.fillText(fmt(it.value,opts.d||1)+(opts.unit||''),x1+6,y+bh/2);
+  });
+}
+function donut(cv,items){
+  const p=prep(cv,200);const c=p.c;
+  const cx=p.w*0.34,cy=p.h/2,R=Math.min(p.w*0.3,p.h*0.42),r=R*0.62;
+  const tot=items.reduce((a,b)=>a+b.value,0)||1;let ang=-Math.PI/2;
+  items.forEach(it=>{
+    const a2=ang+it.value/tot*Math.PI*2;
+    c.beginPath();c.arc(cx,cy,R,ang,a2);c.arc(cx,cy,r,a2,ang,true);c.closePath();
+    c.fillStyle=it.color;c.fill();c.strokeStyle='rgba(5,8,15,.9)';c.lineWidth=1.5;c.stroke();
+    ang=a2;
+  });
+  c.fillStyle='#dce8f7';c.textAlign='center';c.textBaseline='middle';
+  c.font='700 17px '+getComputedStyle(document.body).fontFamily;
+  c.fillText(fmt(tot,0),cx,cy-7);
+  c.font='11px '+getComputedStyle(document.body).fontFamily;c.fillStyle=C.tx3;
+  c.fillText('折标煤 tce',cx,cy+12);
+  const lx=p.w*0.66;
+  items.forEach((it,i)=>{
+    const y=12+i*(p.h-24)/items.length+8;
+    c.fillStyle=it.color;c.fillRect(lx,y-4,9,9);
+    c.fillStyle='#dce8f7';c.textAlign='left';c.textBaseline='middle';
+    c.font='11px '+getComputedStyle(document.body).fontFamily;
+    c.fillText(it.label+'  '+fmt(it.value/tot*100,1)+'%',lx+15,y);
+  });
+}
+function sparkline(cv,data,color){return drawSpark(cv,data?data.slice():null,color)}
+function drawSpark(cv,data,color){
+  const p=prep(cv,18);
+  if(!data||data.length<2){
+    p.c.fillStyle='rgba(84,140,210,.35)';p.c.fillRect(0,p.h/2,p.w,1);return;
+  }const c=p.c;
+  const mn=Math.min.apply(null,data),mx=Math.max.apply(null,data);
+  const rg=(mx-mn)||1;
+  c.beginPath();
+  data.forEach((v,i)=>{
+    const x=(p.w)*(i/(data.length-1||1)),y=p.h-2-(p.h-4)*((v-mn)/rg);
+    i?c.lineTo(x,y):c.moveTo(x,y);
+  });
+  c.strokeStyle=color||C.cy;c.lineWidth=1.4;c.stroke();
+  c.lineTo(p.w,p.h);c.lineTo(0,p.h);c.closePath();
+  c.fillStyle='rgba(49,220,255,.14)';c.fill();
+}
+function renderStateChart(counts){
+  const items=[
+    {label:'升温/保温',value:counts.heat||0,color:C.or},
+    {label:'水洗/皂洗',value:counts.wash||0,color:C.cy},
+    {label:'进料/出布',value:counts.run||0,color:C.gr},
+    {label:'故障停机',value:counts.fault||0,color:C.rd},
+    {label:'待机/保养',value:counts.idle||0,color:C.tx3}
+  ];
+  hBars($('#ch-state'),items,{max:S.machines.length,unit:' 台',h:150,d:0});
+  const lg=$('#lg-state');
+  if(lg.children.length!==items.length){lg.innerHTML='';items.forEach(()=>{const s=document.createElement('span');s.appendChild(document.createElement('s'));s.appendChild(document.createTextNode(''));lg.appendChild(s)})}
+  items.forEach((it,i)=>{
+    const s=lg.children[i];s.firstElementChild.style.background=it.color;
+    s.lastChild.textContent=it.label+' '+it.value;
+  });
+}
+
+/* SECTION: energy render */
+const EN_META={
+  kwh:{name:'电力',unit:'kWh',flow:'kW',color:C.ye,ico:'⚡',label:'有功负荷',base:1180},
+  steam:{name:'蒸汽',unit:'t',flow:'t/h',color:C.cy,ico:'♨',label:'蒸汽流量',base:9.4},
+  gas:{name:'天然气',unit:'Nm³',flow:'Nm³/h',color:C.or,ico:'🔥',label:'燃气流量',base:76},
+  water:{name:'工业水',unit:'m³',flow:'m³/h',color:C.bl,ico:'💧',label:'给水流量',base:112}
+};
+function buildEnergyCards(){
+  const box=$('#ec-cards');box.innerHTML='';
+  Object.keys(EN_META).forEach(k=>{
+    const m=EN_META[k];const el=clone('tpl-ec');el.dataset.k=k;
+    el.querySelector('.ec-ico').textContent=m.ico;
+    el.querySelector('.ec-name').textContent=m.name+'（'+m.unit+'）';
+    el.querySelector('.ec-unit').textContent=' '+m.flow;
+    box.appendChild(el);
+  });
+}
+function renderEnergyCards(){
+  const box=$('#ec-cards');const t=totals();
+  const live={kwh:t.kw,steam:t.stm/1000,gas:t.gs,water:t.wt};
+  const acc={kwh:S.energy.kwh,steam:S.energy.steam,gas:S.energy.gas,water:S.energy.water};
+  Array.prototype.forEach.call(box.children,el=>{
+    const k=el.dataset.k;const m=EN_META[k];
+    el.querySelector('.ec-now').textContent=fmt(live[k],k==='steam'?3:1);
+    el.querySelector('.ec-day').textContent=fmt(acc[k],0)+' '+m.unit;
+    el.querySelector('.ec-tag').textContent='实时 '+m.label;
+    const kgce=acc[k]*F_COEF[k]*(k==='steam'?1000:1);
+    const tce=kgce/1000;
+    const cost=acc[k]*F_PRICE[k]/10000;
+    el.querySelector('.ec-cost').textContent=fmt(tce,2)+' tce · '+fmt(cost,2)+' 万元';
+    sparkline(el.querySelector('canvas'),S.hist.day[k],m.color);
+  });
+}
+function renderEnergyChart(){
+  const k=S.en.type,m=EN_META[k];
+  const range=S.en.range;const H=S.hist[range];
+  const labels=range==='day'?H.kwh.map((v,i)=>pad2(i)+':00'):
+    (range==='week'?H.kwh.map((v,i)=>'D-'+(7-i)):H.kwh.map((v,i)=>i+1+'日'));
+  $('#lg-en-name').textContent=m.name+'消耗（'+m.unit+'）';
+  const cv=$('#ch-energy');
+  barChart(cv,{groups:H[k].map((v,i)=>({label:labels[i],values:[v],colors:[m.color]})),
+    line:{data:H.out,color:C.cy,max:Math.max.apply(null,H.out)*1.1},unit:m.unit+'/'*(1)+'每'+(S.en.range==='day'?'时':'日')});
+}
+function renderEnergyMix(){
+  const e=S.energy;
+  const items=[
+    {label:'染色',value:e.kwh*F_COEF.kwh*0.42+e.steam*F_COEF.steam*1000*0.5,color:C.cy},
+    {label:'定型/热熔',value:e.kwh*F_COEF.kwh*0.22+e.gas*F_COEF.gas*0.55,color:C.or},
+    {label:'水洗/皂洗',value:e.water*F_COEF.water*1000+e.steam*F_COEF.steam*1000*0.22,color:C.bl},
+    {label:'前处理',value:e.steam*F_COEF.steam*1000*0.18,color:C.gr},
+    {label:'空压/动力',value:e.kwh*F_COEF.kwh*0.1,color:C.pu},
+    {label:'照明空调',value:e.kwh*F_COEF.kwh*0.04,color:C.tx3}
+  ];
+  donut($('#ch-mix'),items);
+}
+function renderTopMachines(){
+  const arr=S.machines.slice().sort((a,b)=>b.eui-a.eui).slice(0,10)
+    .map(m=>({label:m.code,value:m.eui,color:m.eui>BASE_EUI+22?C.rd:(m.eui>BASE_EUI?C.or:C.gr)}));
+  hBars($('#ch-top'),arr,{max:260,unit:'',h:200,d:1});
+}
+function renderTou(){
+  const day=S.hist.day.kwh.reduce((a,b)=>a+b,0);
+  const rows=[
+    ['峰时段 0.98元',day*0.34,day,'var(--rd)',fmt(day*0.34,0)+' kWh'],
+    ['平时段 0.72元',day*0.41,day,'var(--ye)',fmt(day*0.41,0)+' kWh'],
+    ['谷时段 0.38元',day*0.25,day,'var(--gr)',fmt(day*0.25,0)+' kWh']
+  ];
+  fillBarList('#en-tou',rows);
+  $('#en-cost').textContent=fmt(day*0.72/10000,2);
+  $('#en-co2').textContent=fmt(euiToday()*2.4,1);
+}
+function renderIntensity(){
+  const e=S.energy,t=S.todayKg/1000||1;
+  const rows=[
+    ['电耗',fmt(e.kwh/t,1),'kWh/t',e.kwh/t>620?'高于基准 620':'优于基准 620',e.kwh/t<=620],
+    ['蒸汽',fmt(e.steam/t,2),'t/t',e.steam/t<=1.0?'优于基准 1.0':'高于基准 1.0',e.steam/t<=1.0],
+    ['天然气',fmt(e.gas/t,1),'Nm³/t',e.gas/t<=40?'优于基准 40':'高于基准 40',e.gas/t<=40],
+    ['新鲜水',fmt(e.water/t,1),'m³/t',e.water/t<=95?'优于基准 95':'高于基准 95',e.water/t<=95],
+    ['综合能耗',fmt(euiToday(),1),'kgce/t',euiToday()<=BASE_EUI?'优于基准 '+BASE_EUI:'高于基准 '+BASE_EUI,euiToday()<=BASE_EUI],
+    ['回用水率',fmt(clamp(41+Math.sin(S.tick/40)*6,30,60),1),'%','目标 ≥40%',true]
+  ];
+  const box=$('#en-intensity');
+  if(box.children.length!==rows.length){box.innerHTML='';rows.forEach(()=>box.appendChild(clone('tpl-it')))}
+  rows.forEach((r,i)=>{
+    const el=box.children[i];
+    el.querySelector('h5').textContent=r[0]+'（'+r[2]+'）';
+    el.querySelector('.n span').textContent=r[1];
+    el.querySelector('.n u').textContent=r[2];
+    const c=el.querySelector('.cmp');c.textContent=r[3];c.className='cmp '+(r[4]?'up':'down');
+  });
+}
+function renderEnergy(){renderEnergyCards();renderEnergyChart();renderEnergyMix();renderTopMachines();renderTou();renderIntensity()}
+
+/* SECTION: components render */
+function buildCompSelects(){
+  const g=$('#cp-group');
+  const groups={};S.points.forEach(p=>groups[p.def.g]=1);
+  Object.keys(groups).forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=k;g.appendChild(o)});
+  const m=$('#cp-machine');
+  S.machines.forEach(x=>{const o=document.createElement('option');o.value=x.code;o.textContent=x.code+' '+x.type;m.appendChild(o)});
+  const o=document.createElement('option');o.value='公用工程';o.textContent='公用工程';m.appendChild(o);
+}
+function compList(){
+  const f=S.cp;
+  let arr=S.points.filter(p=>{
+    if(f.group!=='all'&&p.def.g!==f.group)return false;
+    if(f.machine!=='all'&&p.mcode!==f.machine)return false;
+    if(f.status!=='all'&&p.st!==f.status)return false;
+    if(f.q){
+      const q=f.q.toLowerCase();
+      if((p.tag+p.def.n+p.mcode+p.def.g).toLowerCase().indexOf(q)<0)return false;
+    }
+    return true;
+  });
+  if(f.byDev){
+    const dev=p=>{const o=p.def.ok;return Math.max(0,p.v-o[1],o[0]-p.v)/(o[1]-o[0])};
+    arr.sort((a,b)=>dev(b)-dev(a));
+  }else{
+    const order={alarm:0,warn:1,off:2,ok:3};
+    arr.sort((a,b)=>order[a.st]-order[b.st]||a.mcode.localeCompare(b.mcode)||a.tag.localeCompare(b.tag));
+  }
+  return arr;
+}
+const ST_META={ok:['正常',C.gr],warn:['预警',C.ye],alarm:['越限',C.rd],off:['离线',C.tx3]};
+function renderComp(){
+  const f=S.cp;const arr=compList();
+  const pages=Math.max(1,Math.ceil(arr.length/f.size));
+  if(f.page>=pages)f.page=pages-1;
+  const start=f.page*f.size;const view=arr.slice(start,start+f.size);
+  const body=$('#cp-body');body.innerHTML='';
+  view.forEach(p=>{
+    const tr=clone('tpl-cp');
+    tr.querySelector('.c-tag').textContent=p.tag;
+    tr.querySelector('.c-name').textContent=p.def.n;
+    tr.querySelector('.c-group').textContent=p.def.g;
+    tr.querySelector('.c-mc').textContent=p.mcode;
+    tr.querySelector('.c-val').textContent=fmt(p.v,p.def.d||1);
+    tr.querySelector('.c-unit').textContent=p.def.u||'—';
+    tr.querySelector('.c-rg').textContent=fmt(p.def.ok[0],p.def.d||0)+' ~ '+fmt(p.def.ok[1],p.def.d||0);
+    tr.querySelector('.c-time').textContent=hms(p.up);
+    const sm=ST_META[p.st];
+    const st=tr.querySelector('.c-st');
+    st.querySelector('.lv').style.background=sm[1];
+    st.querySelector('span').textContent=sm[0];
+    st.style.color=sm[1];
+    tr.querySelector('.c-val').style.color=sm[1];
+    tr.dataset.hist=JSON.stringify(p.hist);
+    tr.addEventListener('click',()=>{const m=S.machines[p.mid];if(m)openDrawer(m)});
+    body.appendChild(tr);
+  });
+  /* 行已入 DOM，再按实际 clientWidth 绘制迷你趋势 */
+  Array.prototype.forEach.call(body.children,row=>{
+    drawSpark(row.querySelector('canvas'),JSON.parse(row.dataset.hist),ST_META[row.querySelector('.c-st span').textContent==='越限'?'alarm':(row.querySelector('.c-st span').textContent==='预警'?'warn':(row.querySelector('.c-st span').textContent==='离线'?'off':'ok'))][1]);
+  });
+  $('#cp-info').textContent='共 '+arr.length+' 个测点 · 第 '+(f.page+1)+' / '+pages+' 页 · 当前显示 '+(arr.length?start+1:0)+'-'+(start+view.length);
+  $('#cp-prev').disabled=f.page<=0;$('#cp-next').disabled=f.page>=pages-1;
+  $('#bd-cp').textContent=S.points.length;
+  const sum={ok:0,warn:0,alarm:0,off:0};S.points.forEach(p=>sum[p.st]++);
+  const rows=[
+    ['正常',sum.ok,S.points.length,'var(--gr)',sum.ok+' 个'],
+    ['预警',sum.warn,S.points.length,'var(--ye)',sum.warn+' 个'],
+    ['越限',sum.alarm,S.points.length,'var(--rd)',sum.alarm+' 个'],
+    ['离线',sum.off,S.points.length,'var(--tx3)',sum.off+' 个']
+  ];
+  fillBarList('#cp-sum',rows);
+  const groups={};
+  S.points.forEach(p=>{const g=p.def.g;groups[g]=groups[g]||{ok:0,warn:0,bad:0};groups[g][p.st==='ok'?'ok':(p.st==='warn'?'warn':'bad')]++});
+  const cfg=Object.keys(groups).map(g=>({label:g,values:[groups[g].ok,groups[g].warn,groups[g].bad],colors:[C.gr,C.ye,C.rd]}));
+  barChart($('#ch-comp'),{groups:cfg,unit:'个'});
+}
+
+/* SECTION: orders render */
+function orderList(){
+  const f=S.od;
+  return S.orders.filter(o=>{
+    if(f.s!=='all'&&o.st!==f.s)return false;
+    if(f.q){const q=f.q.toLowerCase();if((o.id+o.cust+o.color+o.fab).toLowerCase().indexOf(q)<0)return false}
+    return true;
+  }).sort((a,b)=>(a.st==='run'?0:1)-(b.st==='run'?0:1)||a.due.localeCompare(b.due));
+}
+const OST={run:['生产中',C.gr],wait:['待排缸',C.ye],re:['返缸重染',C.or],done:['已完工',C.tx3]};
+function renderOrders(){
+  const arr=orderList();const body=$('#od-body');body.innerHTML='';
+  arr.forEach(o=>{
+    const tr=clone('tpl-od');
+    tr.querySelector('.o-id').textContent=o.id;
+    tr.querySelector('.o-cust').textContent=o.cust+' / '+o.fab;
+    tr.querySelector('.o-fab').textContent=o.gsm+' g/m²';
+    tr.querySelector('.o-color').textContent=o.color+' · '+o.proc;
+    tr.querySelector('.o-mc').textContent=o.machines.length?o.machines.slice(0,3).join(' ')+(o.machines.length>3?' +'+(o.machines.length-3):''):'待分配';
+    tr.querySelector('.o-bat').textContent=o.batDone+'/'+o.batTotal;
+    tr.querySelector('.o-kw').textContent=fmt(o.done,0)+' / '+fmt(o.plan,0);
+    const pc=clamp(o.done/o.plan*100,0,100);
+    tr.querySelector('.pbar i').style.width=pc+'%';
+    tr.querySelector('.o-pc').textContent=fmt(pc,0)+'%';
+    tr.querySelector('.o-ratio').textContent='1:'+fmt(o.ratio,1);
+    tr.querySelector('.o-eui').textContent=fmt(o.eui,1);
+    const st=OST[o.st];const se=tr.querySelector('.o-st');
+    se.querySelector('.lv').style.background=st[1];se.querySelector('span').textContent=st[0];se.style.color=st[1];
+    tr.querySelector('.o-due').textContent=o.due;
+    body.appendChild(tr);
+  });
+  $('#od-empty').style.display=arr.length?'none':'';
+  renderOutputChart();renderShiftChart();
+}
+function renderOutputChart(){
+  const H=S.hist.week;
+  barChart($('#ch-output'),{
+    groups:H.out.map((v,i)=>({label:'D-'+(7-i),values:[v,H.plan[i]],colors:[C.gr,C.tx3]})),
+    line:{data:H.out.map((v,i)=>v/H.plan[i]*100),color:C.cy,max:120},unit:'t'});
+}
+function renderShiftChart(){
+  const days=['甲班','乙班','丙班'];
+  const g=days.map((d,i)=>({label:d,values:[rnd(38,52),rnd(35,49)],colors:[C.cy,C.pu]}));
+  barChart($('#ch-shift'),{groups:g,unit:'t'});
+}
+
+/* SECTION: alarms render */
+function alarmList(){
+  const f=S.al;
+  return S.alarms.filter(a=>{
+    if(f.s!=='all'&&String(a.lv)!==String(f.s))return false;
+    if(f.open&&a.st==='closed')return false;
+    return true;
+  }).sort((a,b)=>b.t-a.t);
+}
+function renderAlarms(){
+  const open=S.alarms.filter(a=>a.st!=='closed');
+  const cnt=n=>open.filter(a=>String(a.lv)===String(n)).length;
+  const stats=[
+    ['未确认',open.filter(a=>a.st==='new').length,'条','紧急 '+cnt(1),'重要 '+cnt(2),C.rd,'✕'],
+    ['处理中',open.filter(a=>a.st==='ack').length,'条','责任人 已派工','平均响应 4.6min',C.ye,'◔'],
+    ['今日已闭环',S.alarms.filter(a=>a.st==='closed').length,'条','闭环率 '+fmt(S.alarms.length?S.alarms.filter(a=>a.st==='closed').length/S.alarms.length*100:0,1)+'%','MTTR 18min',C.gr,'✓'],
+    ['静默屏蔽',3,'条','维保计划 2 台','通信检修 1 段','#8ea6c4','∅']
+  ];
+  const box=$('#al-stats');
+  if(box.children.length!==stats.length){box.innerHTML='';stats.forEach(()=>box.appendChild(clone('tpl-alstat')))}
+  stats.forEach((r,i)=>{
+    const el=box.children[i];
+    el.querySelector('.ec-ico').textContent=r[6];
+    el.querySelector('.ec-ico').style.color=r[5];
+    el.querySelector('.ec-name').textContent=r[0];
+    el.querySelector('.ec-now').textContent=r[1];
+    el.querySelector('.ec-unit').textContent=' '+r[2];
+    el.querySelector('.l1').textContent=r[3];
+    el.querySelector('.l2').textContent=r[4];
+  });
+  const arr=alarmList();
+  const body=$('#al-body');body.innerHTML='';
+  arr.slice(0,60).forEach(a=>{
+    const tr=clone('tpl-al');
+    tr.dataset.id=a.id;
+    tr.querySelector('.a-time').textContent=hm(a.t);
+    const lc=LEVEL_COLOR[a.lv]||C.cy;
+    const lv=tr.querySelector('.a-lv');
+    lv.querySelector('.lv').style.background=lc;
+    lv.querySelector('span').textContent=LEVELS[a.lv]||'提示';
+    lv.style.color=lc;
+    tr.querySelector('.a-mc').textContent=a.mc;
+    tr.querySelector('.a-tag').textContent=(a.def&&a.def.n?a.def.n:a.tag)+' · '+(a.tag||'');
+    tr.querySelector('.a-msg').textContent=a.msg;
+    const d=(a.def&&a.def.d)||1;
+    const ok=(a.def&&a.def.ok)||[0,1];
+    tr.querySelector('.a-val').textContent=fmt(a.val,d)+' / '+fmt(ok[0],0)+'~'+fmt(ok[1],0)+(a.def&&a.def.u?' '+a.def.u:'');
+    tr.querySelector('.a-dur').textContent=a.dur+'min';
+    const stTxt={new:['未确认',C.rd],ack:['处理中',C.ye],closed:['已闭环',C.gr]}[a.st];
+    const se=tr.querySelector('.a-st');
+    se.querySelector('.lv').style.background=stTxt[1];
+    se.querySelector('span').textContent=stTxt[0];
+    se.style.color=stTxt[1];
+    const act=tr.querySelector('.a-act span');
+    const mk=(txt,cmd)=>{const b=document.createElement('button');b.className='mini';b.textContent=txt;
+      b.addEventListener('click',()=>alarmAct(a.id,cmd));return b};
+    if(a.st==='new')act.appendChild(mk('确认派工','ack'));
+    else if(a.st==='ack')act.appendChild(mk('闭环','close'));
+    else act.appendChild(mk('查看追溯','trace'));
+    body.appendChild(tr);
+  });
+  $('#al-empty').style.display=arr.length?'none':'';
+  const nb=S.alarms.filter(a=>a.st==='new').length;
+  $('#bd-al').textContent=String(nb);
+  $('#bd-al').style.display=nb?'':'none';
+}
+function alarmAct(id,cmd){
+  const a=S.alarms.filter(x=>x.id===id)[0];if(!a)return;
+  if(cmd==='ack'){a.st='ack';a.owner=pick(['张工','李工','王工','赵工']);toast('报警 #'+id+' 已确认，派工给'+a.owner+'（模拟指令）','warn')}
+  else if(cmd==='close'){a.st='closed';toast('报警 #'+id+' 已闭环，处置记录写入批次档案','ok')}
+  else toast('已调取该机台同批次工艺曲线与加料记录（原型演示）');
+  renderAlarms();updateTop();if(S.tab==='overview')renderOvAlarms();
+}
+function renderOvAlarms(){
+  const box=$('#ov-alarms');
+  const arr=S.alarms.filter(a=>a.st!=='closed').slice(0,6);
+  if(!arr.length){box.innerHTML='';const d=document.createElement('div');d.className='empty';d.textContent='当前没有未闭环报警。';box.appendChild(d);return}
+  box.innerHTML='';
+  arr.forEach(a=>{
+    const el=clone('tpl-as');
+    el.querySelector('.lv').style.background=LEVEL_COLOR[a.lv]||C.cy;
+    el.querySelector('.t1').textContent=a.mc+' · '+(a.def&&a.def.n?a.def.n:a.tag);
+    el.querySelector('.t2').textContent=a.msg;
+    el.querySelector('.t').textContent=hm(a.t);
+    el.addEventListener('click',()=>{switchTab('alarm')});
+    box.appendChild(el);
+  });
+}
+
+/* SECTION: drawer */
+function plItem(){
+  const d=document.createElement('div');d.className='pl';
+  d.innerHTML='<h6><span class="nm"></span><span class="rg"></span></h6><div class="n"><span class="vv"></span><u class="uu"></u></div>';
+  return d;
+}
+function kvItem(){
+  const d=document.createElement('div');d.className='as-item';
+  d.innerHTML='<span class="lv"></span><span class="m"><b class="v1"></b><span class="v2"></span></span><span class="t"></span>';
+  return d;
+}
+const DW_KEYS=['t1','heat','rpm','cur','hz','spd','noz','prs','lvl','ph','bath','dye','vib','sv','air','exh'];
+let dwPoints=null;
+function openDrawer(m){
+  S.sel=m;
+  $('#dw-code').textContent=m.code;
+  $('#dw-type').textContent=m.type+' · 额定缸容 '+fmt(m.load,0)+' kg';
+  const g=phaseGroup(m);
+  const color=g==='fault'?C.rd:(g==='heat'?C.or:(g==='wash'?C.cy:(g==='idle'?C.tx3:C.gr)));
+  const st=$('#dw-state');
+  st.style.setProperty('--st',color);
+  st.textContent=m.state==='fault'?'故障停机':(m.state==='idle'?'待机':(m.state==='maint'?'保养':'染色运行中'));
+  buildDrawerFlow(m);buildDrawerPoints();
+  $('#mask').classList.add('on');$('#drawer').classList.add('on');
+  updateDrawer();
+}
+function closeDrawer(){S.sel=null;$('#mask').classList.remove('on');$('#drawer').classList.remove('on')}
+function buildDrawerFlow(m){
+  const box=$('#dw-flow');box.innerHTML='';
+  PHASES.forEach((p,i)=>{
+    const el=document.createElement('div');el.className='fl'+(i<m.phIdx?' done':(i===m.phIdx?' cur':''));
+    el.textContent=p;box.appendChild(el);
+  });
+  $('#dw-stepno').textContent=(m.phIdx+1)+' / '+PHASES.length;
+}
+function buildDrawerPoints(){
+  const box=$('#dw-points');box.innerHTML='';dwPoints=[];
+  DW_KEYS.forEach(k=>{
+    const cd=COMP_DEF.filter(c=>c.k===k)[0];if(!cd)return;
+    const el=plItem();
+    el.querySelector('.nm').textContent=cd.n;
+    el.querySelector('.rg').textContent=fmt(cd.ok[0],0)+'~'+fmt(cd.ok[1],0);
+    el.querySelector('.uu').textContent=cd.u||'—';
+    el.dataset.k=k;box.appendChild(el);dwPoints.push(el);
+  });
+}
+function drawTempCurve(m){
+  const win=parseInt($('#dw-win').value,10);
+  const h=m.hist.slice(-win);
+  const act=h.map(x=>x.v),tgt=h.map(x=>x.t||m.target);
+  const labels=h.map((x,i)=>{
+    const mm=win-i;return '-'+mm+'′';
+  });
+  const ymax=Math.max(140,Math.max.apply(null,act.concat(tgt))*1.06);
+  lineChart($('#ch-dw'),{labels:labels,ymax:ymax,unit:'℃',bands:[{lo:Math.max(0,Math.max.apply(null,tgt)-2),hi:Math.max.apply(null,tgt)+2,color:'rgba(255,85,102,.10)'}],
+    series:[{name:'目标',data:tgt,color:C.tx3,dash:true,width:1.6},{name:'实际',data:act,color:C.cy,fill:'rgba(49,220,255,.10)',width:2}]});
+}
+function updateDrawer(){
+  const m=S.sel;if(!m)return;
+  drawTempCurve(m);
+  dwPoints.forEach(el=>{
+    const k=el.dataset.k;const cd=COMP_DEF.filter(c=>c.k===k)[0];
+    const v=m[k]||0;
+    const val=el.querySelector('.vv');
+    val.textContent=fmt(v,cd.d||1);
+    const out=v<cd.ok[0]||v>cd.ok[1];
+    const margin=(cd.ok[1]-cd.ok[0])*0.08;
+    const warn=!out&&(v>cd.ok[1]-margin||v<cd.ok[0]+margin);
+    val.style.color=out?C.rd:(warn?C.ye:C.tx);
+  });
+  const e=[[ '电力',fmt((m.kwhInst||0)*m.remain/60,2)+' kWh',12,'var(--ye)'],
+    ['蒸汽',fmt((m.steamInst||0)*m.remain/60/1000,3)+' t',2.2,'var(--cy)'],
+    ['天然气',fmt((m.gasInst||0)*m.remain/60,2)+' Nm³',20,'var(--or)'],
+    ['工业水',fmt((m.waterInst||0)*m.remain/60,2)+' m³',14,'var(--bl)']];
+  fillBarList('#dw-energy',e);
+  const ob=$('#dw-order');ob.innerHTML='';
+  const rows=[
+    ['工单 '+m.order.id,m.order.cust+' · '+m.order.fab+' '+m.order.gsm+'g',C.cy],
+    ['色号 '+m.order.color,'工艺 '+m.order.proc+' · 浴比 1:'+fmt(m.bath,1),C.pu],
+    ['本缸布重 '+fmt(m.load,0)+' kg','已运行 '+fmt(m.runMin,0)+' min · 剩余 '+m.remain+' min',C.gr],
+    ['ΔE '+fmt(m.dye,2)+' / pH '+fmt(m.ph,1),'在线测色判定：'+(m.dye<1.0?'合格':(m.dye<1.4?'临界':'需复测')),m.dye<1?C.gr:C.ye],
+    ['批次累计产量 '+fmt(m.batches*m.load/1000,2)+' t','一次成功率 '+fmt(m.fps,1)+'%',C.bl]
+  ];
+  rows.forEach(r=>{
+    const el=kvItem();
+    el.querySelector('.lv').style.background=r[2];
+    el.querySelector('.v1').textContent=r[0];
+    el.querySelector('.v2').textContent=r[1];
+    ob.appendChild(el);
+  });
+  const ab=$('#dw-alarms');ab.innerHTML='';
+  const al=S.alarms.filter(a=>a.mc===m.code&&a.st!=='closed');
+  if(!al.length){const d=document.createElement('div');d.className='empty';d.textContent='该机台暂无未闭环报警。';ab.appendChild(d)}
+  al.slice(0,5).forEach(a=>{
+    const el=kvItem();
+    el.querySelector('.lv').style.background=LEVEL_COLOR[a.lv]||C.cy;
+    el.querySelector('.v1').textContent=(a.def&&a.def.n?a.def.n:'')+' '+fmt(a.val,(a.def&&a.def.d)||1);
+    el.querySelector('.v2').textContent=a.msg;
+    el.querySelector('.t').textContent=hm(a.t);
+    ab.appendChild(el);
+  });
+}
+
+/* SECTION: active tab render */
+function renderActive(){
+  if(S.tab==='overview')renderOverview();
+  else if(S.tab==='energy')renderEnergy();
+  else if(S.tab==='comp')renderComp();
+  else if(S.tab==='order')renderOrders();
+  else renderAlarms();
+  if(S.sel)updateDrawer();
+}
+function switchTab(name){
+  S.tab=name;
+  $$('.tab').forEach(t=>t.classList.toggle('on',t.dataset.tab===name));
+  $$('.panel').forEach(p=>p.classList.toggle('on',p.id==='p-'+name));
+  renderActive();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+/* SECTION: bindings */
+function bind(){
+  $$('.tab').forEach(t=>t.addEventListener('click',()=>switchTab(t.dataset.tab)));
+  $$('[data-goto]').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.goto)));
+  $('#btn-run').addEventListener('click',e=>{
+    S.running=!S.running;
+    e.currentTarget.textContent=S.running?'暂停采集':'继续采集';
+    e.currentTarget.classList.toggle('on',S.running);
+    $('#tb-state').textContent=S.running?'采集中':'已暂停';
+    $('#live-dot').classList.toggle('off',!S.running);
+    toast(S.running?'采集已恢复，按设定频率刷新':'采集已暂停（界面数据冻结在当前值）');
+  });
+  $('#btn-full').addEventListener('click',()=>{
+    if(!document.fullscreenElement){document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen();toast('已进入全屏大屏模式')}
+    else document.exitFullscreen&&document.exitFullscreen();
+  });
+  $('#sel-rate').addEventListener('change',e=>{
+    S.rate=parseInt(e.target.value,10);
+    clearInterval(S.timer);S.timer=setInterval(tick,S.rate);
+    toast('采集频率已切换为 '+(S.rate/1000)+' 秒');
+  });
+  $('#ov-search').addEventListener('input',e=>{S.ovFilter.q=e.target.value.trim();S.ovFilter.page=0;renderOverview()});
+  $('#ov-sort').addEventListener('change',e=>{S.ovFilter.sort=e.target.value;renderOverview()});
+  $$('#ov-chips .chip').forEach(c=>c.addEventListener('click',()=>{
+    $$('#ov-chips .chip').forEach(x=>x.classList.remove('on'));c.classList.add('on');
+    S.ovFilter.s=c.dataset.s;renderOverview();
+  }));
+  $$('#en-chips .chip').forEach(c=>c.addEventListener('click',()=>{
+    $$('#en-chips .chip').forEach(x=>x.classList.remove('on'));c.classList.add('on');
+    S.en.type=c.dataset.en;renderEnergyChart();
+  }));
+  $('#en-range').addEventListener('change',e=>{S.en.range=e.target.value;renderEnergyChart()});
+  $('#cp-search').addEventListener('input',e=>{S.cp.q=e.target.value.trim();S.cp.page=0;renderComp()});
+  $('#cp-group').addEventListener('change',e=>{S.cp.group=e.target.value;S.cp.page=0;renderComp()});
+  $('#cp-machine').addEventListener('change',e=>{S.cp.machine=e.target.value;S.cp.page=0;renderComp()});
+  $('#cp-status').addEventListener('change',e=>{S.cp.status=e.target.value;S.cp.page=0;renderComp()});
+  $('#cp-size').addEventListener('change',e=>{S.cp.size=parseInt(e.target.value,10);S.cp.page=0;renderComp()});
+  $('#cp-prev').addEventListener('click',()=>{S.cp.page=Math.max(0,S.cp.page-1);renderComp()});
+  $('#cp-next').addEventListener('click',()=>{S.cp.page=S.cp.page+1;renderComp()});
+  $('#cp-sort-val').addEventListener('click',e=>{
+    S.cp.byDev=!S.cp.byDev;e.currentTarget.classList.toggle('on',S.cp.byDev);
+    S.cp.page=0;renderComp();
+    toast(S.cp.byDev?'已按阈值偏差排序（越限优先）':'已按状态+机台号排序');
+  });
+  $('#cp-export').addEventListener('click',exportCsv);
+  $('#od-search').addEventListener('input',e=>{S.od.q=e.target.value.trim();renderOrders()});
+  $$('#od-chips .chip').forEach(c=>c.addEventListener('click',()=>{
+    $$('#od-chips .chip').forEach(x=>x.classList.remove('on'));c.classList.add('on');
+    S.od.s=c.dataset.os;renderOrders();
+  }));
+  $$('#al-chips .chip').forEach(c=>c.addEventListener('click',()=>{
+    $$('#al-chips .chip').forEach(x=>x.classList.remove('on'));c.classList.add('on');
+    S.al.s=c.dataset.as;renderAlarms();
+  }));
+  $('#al-open').addEventListener('change',e=>{S.al.open=e.target.checked;renderAlarms()});
+  $('#dw-close').addEventListener('click',closeDrawer);
+  $('#mask').addEventListener('click',closeDrawer);
+  $('#dw-win').addEventListener('change',()=>{if(S.sel)drawTempCurve(S.sel)});
+  $$('.dw-f .btn').forEach(b=>b.addEventListener('click',()=>{
+    const m=S.sel;if(!m)return;
+    const a=b.dataset.act;
+    if(a==='recipe')toast('已向 '+m.code+' 下发标准工艺 v3.2（原型模拟，未连接真实 PLC）','ok');
+    else if(a==='pause'){m.state='fault';m.remain=0;toast(m.code+' 已挂起当前程序，保温计时暂停','warn')}
+    else if(a==='ack'){S.alarms.filter(x=>x.mc===m.code&&x.st==='new').forEach(x=>x.st='ack');toast(m.code+' 报警已复位并记录','ok');renderAlarms();updateTop()}
+    else toast('批次追溯：温度曲线 / 加料记录 / 能耗明细 / 对色结果（原型演示）');
+    renderOverview();
+  }));
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Escape')closeDrawer();
+    const k=e.key.toLowerCase();
+    if(k==='1')switchTab('overview');else if(k==='2')switchTab('energy');
+    else if(k==='3')switchTab('comp');else if(k==='4')switchTab('order');else if(k==='5')switchTab('alarm');
+  });
+  let rt=null;
+  window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{renderActive()},260)});
+}
+function exportCsv(){
+  const arr=compList();
+  const head=['位号','组件','类别','机台','数值','单位','下限','上限','状态'];
+  const lines=[head.join(',')];
+  arr.forEach(p=>lines.push([p.tag,p.def.n,p.def.g,p.mcode,fmt(p.v,p.def.d||1),p.def.u||'',fmt(p.def.ok[0],0),fmt(p.def.ok[1],0),ST_META[p.st][0]].join(',')));
+  const blob=new Blob(["\ufeff"+lines.join('\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='组件测点快照.csv';
+  document.body.appendChild(a);a.click();a.remove();
+  toast('已导出 '+arr.length+' 条测点快照（CSV）','ok');
+}
+
+/* SECTION: init */
+function initOffline(){
+  for(let i=0;i<3;i++){
+    const p=S.points[ri(0,S.points.length-1)];p.off=true;p.st='off';
+    raiseAlarm(p.mid>=0?S.machines[p.mid]:null,p,'3','测点通信中断，'+p.def.n+' 数据保持上次有效值');
+  }
+}
+function init(){
+  buildOrders();buildMachines();assignOrders();buildPoints();buildEnergyHist();buildAlarms();initOffline();
+  buildMachineCards();buildEnergyCards();buildCompSelects();bind();
+  S.machines.forEach(updateMachineCard);
+  updateTop();renderOverview();renderOvAlarms();
+  S.timer=setInterval(tick,S.rate);
+  tick();
+}
+init();
+</script>
+</body>
+</html>

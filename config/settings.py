@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'apps.copdata',
     'apps.dispatch',
     'apps.complaint',
+    'apps.dyecontrol',
 ]
 
 MIDDLEWARE = [
