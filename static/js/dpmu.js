@@ -48,8 +48,11 @@ function baseTitle(text) {
 
 /* ================= 图表实例管理 ================= */
 var chartInstances = [];
+var chartDialog = document.getElementById('dpmuChartDialog');
+var expandedChart = null;
 
 function disposeCharts() {
+  closeExpandedChart();
   chartInstances.forEach(function(c) { c.dispose(); });
   chartInstances = [];
 }
@@ -59,9 +62,80 @@ function initChart(id, option) {
   if (!el) return;
   var chart = echarts.init(el);
   chart.setOption(option);
+  var button = el.parentElement.querySelector('.dpmu-chart-expand');
+  if (button) button.setAttribute('aria-label', '放大：' + option.title.text);
   chartInstances.push(chart);
   return chart;
 }
+
+function restoreExpandedChart() {
+  if (!expandedChart || chartDialog.open) return;
+  var previous = expandedChart;
+  expandedChart = null;
+  previous.placeholder.replaceWith(previous.card);
+  document.body.classList.remove('dpmu-chart-open');
+  var chart = echarts.getInstanceByDom(previous.element);
+  if (chart) chart.resize();
+  previous.button.focus({ preventScroll: true });
+}
+
+function closeExpandedChart() {
+  if (chartDialog.open) chartDialog.close();
+  restoreExpandedChart();
+}
+
+page.querySelectorAll('#chartGrid .chart-container').forEach(function(element) {
+  var card = element.parentElement;
+  var button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'dpmu-chart-expand';
+  button.title = '放大图表';
+  button.setAttribute('aria-label', '放大图表');
+  button.setAttribute('aria-haspopup', 'dialog');
+  button.setAttribute('aria-controls', 'dpmuChartDialog');
+  var icon = document.createElement('img');
+  icon.src = page.dataset.expandIcon;
+  icon.alt = '';
+  icon.width = 16;
+  icon.height = 16;
+  button.append(icon);
+  card.append(button);
+  button.addEventListener('click', function() {
+    if (chartDialog.open) return;
+    var placeholder = document.createElement('div');
+    placeholder.className = 'card dpmu-chart-placeholder';
+    placeholder.style.height = card.getBoundingClientRect().height + 'px';
+    placeholder.style.order = card.style.order;
+    placeholder.setAttribute('aria-hidden', 'true');
+    expandedChart = { element: element, card: card, placeholder: placeholder, button: button };
+    card.replaceWith(placeholder);
+    chartDialog.append(card);
+    chartDialog.setAttribute('aria-label', button.getAttribute('aria-label').replace('放大：', ''));
+    document.body.classList.add('dpmu-chart-open');
+    chartDialog.showModal();
+    var chart = echarts.getInstanceByDom(element);
+    if (chart) chart.resize();
+  });
+});
+chartDialog.querySelector('.dpmu-chart-close').addEventListener('click', closeExpandedChart);
+chartDialog.addEventListener('cancel', function(event) {
+  event.preventDefault();
+  closeExpandedChart();
+});
+chartDialog.addEventListener('keydown', function(event) {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeExpandedChart();
+  }
+});
+chartDialog.addEventListener('close', restoreExpandedChart);
+chartDialog.addEventListener('click', function(event) {
+  if (event.target !== chartDialog) return;
+  var rect = chartDialog.getBoundingClientRect();
+  if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) {
+    closeExpandedChart();
+  }
+});
 
 /* ================= 图表构建函数 ================= */
 
@@ -314,6 +388,14 @@ function weavingMonthlyOpt(rows) {
 function weavingDailyOpt(rows) {
   var option = lineOpt('每日DPMU趋势', rows.map(function(row) { return row.name; }),
     rows.map(function(row) { return row.dpmu; }), null, '#409cff');
+  option.tooltip.formatter = function(params) {
+    if (!Array.isArray(params) || !params.length) return '';
+    var row = rows[params[0].dataIndex];
+    if (!row) return '';
+    return escapeText(row.name) + '<br/>DPMU: ' + number(row.dpmu)
+      + '<br/>报废数量: ' + number(row.scrap, 6) + ' 米'
+      + '<br/>产量: ' + number(row.production, 6) + ' 米';
+  };
   option.series[0].smooth = false;
   delete option.series[0].areaStyle;
   if (rows.length > 20) {

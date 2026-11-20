@@ -41,6 +41,8 @@ class DpmuTests(SimpleTestCase):
 		self.assertEqual(params[:2], [datetime(2026, 10, 28), datetime(2026, 10, 29)])
 		self.assertEqual(params[2:], ['DYE', 'DYE', *services.WEAVING_EXCLUDED_PRODUCTS])
 		self.assertEqual(sql.count('%s'), len(params))
+		self.assertIn(services.PRODUCT_CODE, sql.partition('FROM')[0])
+		self.assertNotIn('p.ProductName', sql.partition('FROM')[0])
 		services._query_rows(cursor, 'production', start, end, filters, daily=True)
 		daily_sql, daily_params = cursor.execute.call_args.args
 		self.assertIn('CONVERT(char(10), a.RecDate, 120)', daily_sql)
@@ -50,6 +52,8 @@ class DpmuTests(SimpleTestCase):
 		self.assertIn('a.cDefine1 = b.equipNo', sql)
 		self.assertIn('a.DuctID = p.ID', sql)
 		self.assertIn('a.DefCode = g.BarCode', sql)
+		self.assertIn(services.PRODUCT_CODE, sql.partition('FROM')[0])
+		self.assertNotIn('p.ProductName', sql.partition('FROM')[0])
 		self.assertEqual(params[4:6], [start, datetime(2026, 10, 29, 8, 31)])
 		self.assertEqual(params[6:9], list(services.CATEGORIES))
 		self.assertNotIn('过程不合格', params)
@@ -91,19 +95,21 @@ class DpmuTests(SimpleTestCase):
 			INSERT INTO tabEquipment VALUES ('W1', 'Weaving1', 1), ('D1', 'Dyeing1', 2);
 			INSERT INTO tabEquipType VALUES (1, 'WEAV'), (2, 'DYE');
 			INSERT INTO tabProduct VALUES (100, 'P1000YYYY000M', 'A'), (101, NULL, NULL),
-			(102, '', ''), (103, 'Near match', 'P1000YYYY000MX');
+			(102, '', ''), (103, 'Near match', 'P1000YYYY000MX'),
+			(104, 'SDA01BLK041', 'PDA01A00BLK041');
 			INSERT INTO tabWorkDayRpt VALUES
 			('2026-10-28', 'W1', 100, 400), ('2026-10-28', 'W1', 101, 13),
 			('2026-10-28', 'W1', 102, 19), ('2026-10-28', 'W1', 103, 7),
-			('2026-10-28', 'W1', 999, 17), ('2026-10-28', 'D1', 100, 400);
+			('2026-10-28', 'W1', 999, 17), ('2026-10-28', 'D1', 100, 400),
+			('2026-10-28', 'D1', 104, 50);
 		''')
 		for product_id, name in enumerate(services.WEAVING_EXCLUDED_PRODUCTS, 1):
 			database.execute('INSERT INTO tabProduct VALUES (?, ?, ?)', [product_id, str(product_id), ' ' + name + ' '])
 			for equipment, quantity in (('W1', 10), ('D1', 20)):
 				database.execute('INSERT INTO tabWorkDayRpt VALUES (?, ?, ?, ?)',
 					['2026-10-28', equipment, product_id, quantity])
-		for tab, expected in (('overview', {'WEAV': 456, 'DYE': 520}),
-							  ('weaving', {'DYE': 400}), ('dyeing', {'DYE': 520})):
+		for tab, expected in (('overview', {'WEAV': 456, 'DYE': 570}),
+							  ('weaving', {'DYE': 450}), ('dyeing', {'DYE': 570})):
 			with self.subTest(tab=tab):
 				cursor = Mock()
 				services._query_rows(cursor, 'production', datetime(2026, 10, 28, 8, 30),
@@ -119,6 +125,11 @@ class DpmuTests(SimpleTestCase):
 				for month, area, line, product, quantity in rows:
 					totals[area] = totals.get(area, 0) + quantity
 				self.assertEqual(totals, expected)
+				if tab == 'weaving':
+					belts = services.summarize(services._belt_rows(rows), [], [], products_use_total=True)['products']
+					self.assertEqual({row['name']: row['production'] for row in belts}, {'未分类': 400, 'DA01': 50})
+				else:
+					self.assertIn('SDA01BLK041', [row[3] for row in rows])
 
 	def test_weaving_defect_sql_applies_chart_only_restrictions(self):
 		cursor = Mock()
@@ -185,8 +196,8 @@ class DpmuTests(SimpleTestCase):
 		self.assertEqual([row['name'] for row in result['weaving_days']], ['2024-02-27', '2024-02-28', '2024-02-29'])
 		self.assertEqual([row['dpmu'] for row in result['weaving_days']], [None, 100000, 50000])
 		self.assertEqual(sum(row['scrap'] for row in result['weaving_days']), result['weaving_total']['scrap'])
-		self.assertEqual({row['name']: row['dpmu'] for row in result['weaving_products']}, {'P20A': 25000, 'P25B': 37500})
-		self.assertEqual({row['name']: row['production'] for row in result['weaving_products']}, {'P20A': 100, 'P25B': 300})
+		self.assertEqual({row['name']: row['dpmu'] for row in result['weaving_products']}, {'20AA': 25000, '25BB': 37500})
+		self.assertEqual({row['name']: row['production'] for row in result['weaving_products']}, {'20AA': 100, '25BB': 300})
 		self.assertTrue(all(row['denominator_production'] == 400 for row in result['weaving_products']))
 		for call in cursor.execute.call_args_list:
 			self.assertEqual(call.args[0].count('%s'), len(call.args[1]))
@@ -194,22 +205,24 @@ class DpmuTests(SimpleTestCase):
 		self.assertIn('CONVERT(char(10), CASE', cursor.execute.call_args_list[4].args[0])
 		self.assertEqual(cursor.execute.call_args_list[5].args[1][:2], [datetime(2024, 1, 27), datetime(2024, 2, 1)])
 
-	def test_belt_extracts_product_name_characters_one_to_four_before_aggregation(self):
+	def test_belt_extracts_product_number_characters_two_to_five_before_aggregation(self):
 		production = [('2026-10', 'WEAV', 'W1', 'P20AAYYYY000J', 100),
-			('2026-10', 'WEAV', 'W2', 'P20AAZZZZ001M', 300),
+			('2026-10', 'WEAV', 'W2', 'X20AAZZZZ001M', 300),
 			('2026-10', 'WEAV', 'W1', 'AB', 50)]
 		scrap = [('2026-10', 'WEAV', 'W1', 'P20AAYYYY000J', '织造不合格', 'D', 10),
-			('2026-10', 'WEAV', 'W2', 'P20AAZZZZ001M', '织造不合格', 'D', 30),
+			('2026-10', 'WEAV', 'W2', 'X20AAZZZZ001M', '织造不合格', 'D', 30),
 			('2026-10', 'WEAV', 'W3', 'P25BBYYYY000J', '织造不合格', 'D', 5)]
 		result = services.summarize(services._belt_rows(production), services._belt_rows(scrap), [])
 		belts = {row['name']: row for row in result['products']}
-		self.assertEqual(belts['P20A'], {'name': 'P20A', 'production': 400, 'scrap': 40, 'dpmu': 100000})
-		self.assertIsNone(belts['P25B']['dpmu'])
+		self.assertEqual(belts['20AA'], {'name': '20AA', 'production': 400, 'scrap': 40, 'dpmu': 100000})
+		self.assertIsNone(belts['25BB']['dpmu'])
 		self.assertEqual(belts['未分类']['production'], 50)
 		self.assertEqual(sum(row['production'] for row in belts.values()), 450)
 		self.assertEqual(sum(row['scrap'] for row in belts.values()), 45)
 		self.assertEqual(production[0][3], 'P20AAYYYY000J')
-		self.assertEqual(services._belt_rows([('2026-10', 'WEAV', 'W1', 'P20A', 1)])[0][3], 'P20A')
+		for code, expected in (('P20AA', '20AA'), ('P20A', '未分类'), ('', '未分类')):
+			with self.subTest(code=code):
+				self.assertEqual(services._belt_rows([('2026-10', 'WEAV', 'W1', code, 1)])[0][3], expected)
 
 	def test_belt_total_denominator_does_not_change_default_product_ratios(self):
 		production = [('2026-10', 'WEAV', 'W1', 'P20A', 100), ('2026-10', 'WEAV', 'W2', 'P25B', 300)]

@@ -93,7 +93,8 @@ def _query_rows(cursor, metric, start, end, filters, daily=False):
         period = ('CONVERT(char(' + period_length + '), CASE WHEN ' + day + ' < %s THEN %s WHEN '
                   + day + ' > %s THEN %s ELSE ' + day + ' END, 120)')
         timestamp, quantity, source = 'a.BegDate', 'a.intVal1', SCRAP_FROM
-    dimensions = [period, AREA, LINE, PRODUCT]
+    product = PRODUCT_CODE if filters['tab'] == 'weaving' else PRODUCT
+    dimensions = [period, AREA, LINE, product]
     if not production:
         dimensions.extend([CATEGORY, DEFECT])
     conditions = [timestamp + ' >= %s', timestamp + ' < %s']
@@ -178,7 +179,7 @@ def _previous_month(value):
 
 
 def _belt_rows(rows):
-    return [(*row[:3], row[3][:4] if len(row[3]) >= 4 else '未分类', *row[4:]) for row in rows]
+    return [(*row[:3], row[3][1:5] if len(row[3]) >= 5 else '未分类', *row[4:]) for row in rows]
 
 
 def get_summary(start, end, filters):
