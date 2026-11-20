@@ -1,4 +1,5 @@
 from collections import defaultdict
+from calendar import monthrange
 from datetime import datetime, time, timedelta
 from decimal import Decimal
 
@@ -21,10 +22,17 @@ LEFT JOIN tabGramCode g ON a.DefCode = g.BarCode
 AREA = "COALESCE(NULLIF(LTRIM(RTRIM(c.LineName)), ''), N'未分类')"
 LINE = "COALESCE(NULLIF(LTRIM(RTRIM(b.equipName)), ''), N'未分类')"
 PRODUCT = "COALESCE(NULLIF(LTRIM(RTRIM(p.ProductName)), ''), N'未分类')"
+PRODUCT_CODE = "COALESCE(LTRIM(RTRIM(p.ProductNO)), '')"
 CATEGORY = "COALESCE(NULLIF(LTRIM(RTRIM(g.Remark)), ''), N'未分类')"
 DEFECT = "COALESCE(NULLIF(LTRIM(RTRIM(g.MyCode)), ''), N'未分类')"
-CATEGORIES = ('织造不合格', '染色不合格', '染色报废', '过程不合格')
+CATEGORIES = ('织造不合格', '染色不合格', '染色报废')
 TAB_AREAS = {'weaving': 'WEAV', 'dyeing': 'DYE'}
+WEAVING_SCRAP_CLASSES = ('10 米以上', '10米以下', '1米以下', '织造白坯', '织造批量')
+WEAVING_EXCLUDED_DEFECTS = ('新接筒子架 Creels Change', 'PM脏 PM Dirty')
+WEAVING_EXCLUDED_PRODUCTS = (
+    'P1000YYYY000M', 'P1001YYYY000M', 'P1650YYYY000M',
+    'P1200YYYY000M', 'P0900YYYY000M', 'P2500YYYY000M',
+)
 
 
 def allocate_scrap(rows, tab='overview'):
@@ -32,8 +40,7 @@ def allocate_scrap(rows, tab='overview'):
     for month, source_area, line, product, category, defect, quantity in rows:
         if category not in CATEGORIES:
             continue
-        areas = ('WEAV', 'DYE') if category == '过程不合格' else (
-            ('WEAV',) if category == '织造不合格' else ('DYE',))
+        areas = ('WEAV',) if category == '织造不合格' else ('DYE',)
         share = Decimal(quantity or 0) / len(areas)
         for area in areas:
             if tab != 'overview' and area != TAB_AREAS[tab]:
@@ -46,9 +53,9 @@ def allocate_scrap(rows, tab='overview'):
 def get_options(start, end, filters):
     categories = CATEGORIES
     if filters['tab'] == 'weaving':
-        categories = ('织造不合格', '过程不合格')
+        categories = ('织造不合格',)
     elif filters['tab'] == 'dyeing':
-        categories = ('染色不合格', '染色报废', '过程不合格')
+        categories = ('染色不合格', '染色报废')
     query = ('SELECT DISTINCT ' + CATEGORY + ', ' + DEFECT
              + ' FROM tabDefaultRec a LEFT JOIN tabGramCode g ON a.DefCode = g.BarCode'
              + ' WHERE a.BegDate >= %s AND a.BegDate < %s AND ' + CATEGORY
@@ -63,8 +70,9 @@ def get_options(start, end, filters):
         if not selected or category in selected]}
 
 
-def _query_rows(cursor, metric, start, end, filters):
+def _query_rows(cursor, metric, start, end, filters, daily=False):
     production = metric == 'production'
+    period_length = '10' if daily else '7'
     if production:
         offset = timedelta(hours=8, minutes=30)
         lower = datetime.combine((start - offset).date(), time.min)
@@ -72,7 +80,7 @@ def _query_rows(cursor, metric, start, end, filters):
         upper = datetime.combine(shifted_end.date(), time.min)
         if shifted_end.time() != time.min or start == end:
             upper += timedelta(days=1)
-        period = "CONVERT(char(7), a.RecDate, 120)"
+        period = 'CONVERT(char(' + period_length + '), a.RecDate, 120)'
         timestamp, quantity, source = 'a.RecDate', 'a.DayQty', PRODUCTION_FROM
     else:
         lower, upper = start, end + timedelta(minutes=1)
@@ -82,7 +90,7 @@ def _query_rows(cursor, metric, start, end, filters):
         if shifted_end.time() == time.min and start != end:
             last_day -= timedelta(days=1)
         day = 'CAST(DATEADD(minute, -510, a.BegDate) AS date)'
-        period = ('CONVERT(char(7), CASE WHEN ' + day + ' < %s THEN %s WHEN '
+        period = ('CONVERT(char(' + period_length + '), CASE WHEN ' + day + ' < %s THEN %s WHEN '
                   + day + ' > %s THEN %s ELSE ' + day + ' END, 120)')
         timestamp, quantity, source = 'a.BegDate', 'a.intVal1', SCRAP_FROM
     dimensions = [period, AREA, LINE, PRODUCT]
@@ -91,9 +99,14 @@ def _query_rows(cursor, metric, start, end, filters):
     conditions = [timestamp + ' >= %s', timestamp + ' < %s']
     params = [lower, upper]
     if production:
-        areas = ('WEAV', 'DYE') if filters['tab'] == 'overview' else (TAB_AREAS[filters['tab']],)
+        areas = ('WEAV', 'DYE') if filters['tab'] == 'overview' else ('DYE',)
         conditions.append(AREA + ' IN (' + ', '.join(['%s'] * len(areas)) + ')')
         params.extend(areas)
+        if filters['tab'] != 'dyeing':
+            conditions.append('(' + AREA + ' <> %s OR ' + PRODUCT_CODE + ' NOT IN ('
+                              + ', '.join(['%s'] * len(WEAVING_EXCLUDED_PRODUCTS)) + '))')
+            excluded_area = 'DYE' if filters['tab'] == 'weaving' else 'WEAV'
+            params.extend([excluded_area, *WEAVING_EXCLUDED_PRODUCTS])
     if not production:
         conditions.append(CATEGORY + ' IN (' + ', '.join(['%s'] * len(CATEGORIES)) + ')')
         params.extend(CATEGORIES)
@@ -104,6 +117,13 @@ def _query_rows(cursor, metric, start, end, filters):
             if selected_values:
                 conditions.append(expression + ' IN (' + ', '.join(['%s'] * len(selected_values)) + ')')
                 params.extend(selected_values)
+        if metric == 'weaving_defects':
+            conditions.extend([
+                CATEGORY + ' = %s',
+                'a.cDefine10 IN (' + ', '.join(['%s'] * len(WEAVING_SCRAP_CLASSES)) + ')',
+                DEFECT + ' NOT IN (%s, %s)',
+            ])
+            params.extend(['织造不合格', *WEAVING_SCRAP_CLASSES, *WEAVING_EXCLUDED_DEFECTS])
     select_params = [] if production else [first_day, first_day, last_day, last_day]
     selected = ', '.join(dimensions)
     query = ('SELECT ' + selected + ', SUM(CAST(' + quantity + ' AS DECIMAL(28, 6))) '
@@ -115,7 +135,7 @@ def _query_rows(cursor, metric, start, end, filters):
     return cursor.fetchall()
 
 
-def summarize(production_rows, scrap_rows, months):
+def summarize(production_rows, scrap_rows, months, products_use_total=False):
     dimensions = {name: defaultdict(lambda: [Decimal(0), Decimal(0)])
                   for name in ('months', 'areas', 'lines', 'products', 'categories', 'defects')}
     for month in months:
@@ -139,12 +159,26 @@ def summarize(production_rows, scrap_rows, months):
     for name, groups in dimensions.items():
         points = []
         for label, (production, scrap) in groups.items():
-            denominator = production_total if name in ('categories', 'defects') else production
+            denominator = production_total if name in ('categories', 'defects') or (
+                name == 'products' and products_use_total) else production
             display_label = {'WEAV': '织造', 'DYE': '染色'}.get(label, label) if name == 'areas' else label
-            points.append(point(display_label, denominator, scrap))
+            item = point(display_label, denominator, scrap)
+            if name == 'products' and products_use_total:
+                item.update(production=float(production), denominator_production=float(denominator))
+            points.append(item)
         result[name] = sorted(points, key=lambda item: item['name']) if name == 'months' else sorted(
             points, key=lambda item: (-item['scrap'], item['name']))
     return result
+
+
+def _previous_month(value):
+    year = value.year - 1 if value.month == 1 else value.year
+    month = 12 if value.month == 1 else value.month - 1
+    return value.replace(year=year, month=month, day=min(value.day, monthrange(year, month)[1]))
+
+
+def _belt_rows(rows):
+    return [(*row[:3], row[3][:4] if len(row[3]) >= 4 else '未分类', *row[4:]) for row in rows]
 
 
 def get_summary(start, end, filters):
@@ -160,4 +194,39 @@ def get_summary(start, end, filters):
     with connections['mesaq'].cursor() as cursor:
         production = _query_rows(cursor, 'production', start, end, filters)
         scrap = _query_rows(cursor, 'scrap', start, end, filters)
-    return summarize(production, allocate_scrap(scrap, filters['tab']), months)
+        weaving_defects = _query_rows(cursor, 'weaving_defects', start, end, filters) if filters['tab'] == 'weaving' else None
+        if weaving_defects is not None:
+            daily_production = _query_rows(cursor, 'production', start, end, filters, daily=True)
+            daily_scrap = _query_rows(cursor, 'weaving_defects', start, end, filters, daily=True)
+            previous_start, previous_end = _previous_month(start), _previous_month(end)
+            previous_production = _query_rows(cursor, 'production', previous_start, previous_end, filters)
+            previous_scrap = _query_rows(cursor, 'weaving_defects', previous_start, previous_end, filters)
+    result = summarize(production, allocate_scrap(scrap, filters['tab']), months)
+    if weaving_defects is not None:
+        weaving_summary = summarize(production, allocate_scrap(weaving_defects, 'weaving'), months)
+        result['weaving_defects'] = weaving_summary['defects']
+        result['weaving_total'] = weaving_summary['total']
+        result['weaving_products'] = summarize(
+            _belt_rows(production), _belt_rows(allocate_scrap(weaving_defects, 'weaving')), [],
+            products_use_total=True)['products']
+        previous = summarize(previous_production, allocate_scrap(previous_scrap, 'weaving'), [])
+        previous_months = {row['name']: row for row in previous['months']}
+        result['weaving_months'] = []
+        for row in weaving_summary['months']:
+            previous_month = _previous_month(datetime.strptime(row['name'], '%Y-%m')).strftime('%Y-%m')
+            comparison = previous_months.get(previous_month, {})
+            previous_dpmu = comparison.get('dpmu')
+            result['weaving_months'].append({**row, 'previous_month': previous_month,
+                'previous_dpmu': previous_dpmu,
+                'previous_production': comparison.get('production', 0),
+                'previous_scrap': comparison.get('scrap', 0),
+                'change_percent': (row['dpmu'] / previous_dpmu - 1) * 100
+                if row['dpmu'] is not None and previous_dpmu not in (None, 0) else None})
+        day = (start - timedelta(hours=8, minutes=30)).date()
+        days = []
+        while day <= shifted_end.date():
+            days.append(day.isoformat())
+            day += timedelta(days=1)
+        result['weaving_days'] = summarize(
+            daily_production, allocate_scrap(daily_scrap, 'weaving'), days)['months']
+    return result

@@ -16,7 +16,7 @@ function tickClock() {
 tickClock(); setInterval(tickClock, 1000);
 
 var snapshot = null;
-var currentTab = 'overview';
+var currentTab = 'weaving';
 var defectOptions = [];
 var queryButton = document.getElementById('dpmuQuery');
 var status = document.getElementById('dpmuStatus');
@@ -110,7 +110,11 @@ function hbarOpt(title, cats, vals, color, unit) {
         if (!params.length) return '';
         var p = params[0];
         if (p.componentType !== 'series' || p.value == null) return '';
-        return escapeText(p.name) + '<br/>' + p.marker + 'DPMU: ' + number(p.value) + u;
+        var text = escapeText(p.name) + '<br/>' + p.marker + 'DPMU: ' + number(p.value) + u;
+        if (p.data && p.data.scrap != null) {
+          text += '<br/>报废米数: ' + number(p.data.scrap, 6) + ' 米';
+        }
+        return text;
       }
     }),
     grid: { top: isMobile ? '16%' : '18%', bottom: '6%', left: '3%', right: '22%', containLabel: true },
@@ -204,6 +208,45 @@ function gaugeOpt(title, value, maxVal) {
   };
 }
 
+function weavingGaugeOpt(value) {
+  var threshold = 8600;
+  var maximum = Math.max(threshold * 2, Math.ceil((value || 0) / threshold) * threshold);
+  var color = value == null ? '#7d9cc9' : value > threshold ? '#ff6b6b' : '#34d97e';
+  var option = gaugeOpt('DPMU TOTAL', value, maximum);
+  var series = option.series[0];
+  series.startAngle = 180;
+  series.endAngle = 0;
+  series.center = ['50%', '59%'];
+  series.radius = '82%';
+  series.splitNumber = maximum / threshold;
+  series.axisLine.lineStyle.width = 12;
+  series.axisLine.lineStyle.color = [[threshold / maximum, '#34d97e'], [1, '#ff6b6b']];
+  series.axisTick.show = false;
+  series.splitLine.show = false;
+  series.axisLabel = {
+    distance: 18, color: '#64748b', fontSize: 11,
+    formatter: function(tick) { return tick === 0 || tick === maximum ? number(tick) : ''; }
+  };
+  series.pointer.show = value != null;
+  series.pointer.width = 3;
+  series.pointer.length = '72%';
+  series.pointer.itemStyle.color = color;
+  series.anchor.size = 7;
+  series.anchor.itemStyle.color = color;
+  series.detail.color = color;
+  series.detail.fontSize = isMobile ? 32 : 38;
+  series.detail.offsetCenter = [0, '27%'];
+  series.title = {
+    show: true, offsetCenter: [0, '62%'],
+    rich: {
+      label: { color: '#64748b', fontSize: 12, fontWeight: 400 },
+      value: { color: '#334155', fontSize: 16, fontWeight: 700 }
+    }
+  };
+  series.data = [{ value: value == null ? 0 : value, name: '{label|临界值}  {value|8,600}' }];
+  return option;
+}
+
 /* 带产量标注的柱状图 */
 function barWithProdOpt(title, cats, dpmuVals, prodVals, color, prodUnit) {
   var pu = prodUnit || '原始数量';
@@ -246,29 +289,102 @@ function barWithProdOpt(title, cats, dpmuVals, prodVals, color, prodUnit) {
 
 /* ================= Tab 构建函数 ================= */
 
+function weavingMonthlyOpt(rows) {
+  var option = barOpt('月DPMU环比', rows.map(function(row) { return row.name; }),
+    rows.map(function(row) { return row.dpmu; }), '#409cff');
+  option.series[0].name = '本月';
+  option.series[0].label.show = rows.length <= 6;
+  option.series.push(Object.assign({}, option.series[0], {
+    name: '上月同期', data: rows.map(function(row) { return row.previous_dpmu; }),
+    itemStyle: { color: '#34d97e', borderRadius: [3,3,0,0] }
+  }));
+  option.legend = { show: true, top: 28, left: 'center', textStyle: AX, itemWidth: 14 };
+  option.grid.top = 58;
+  option.tooltip.formatter = function(params) {
+    if (!Array.isArray(params) || !params.length) return '';
+    var row = rows[params[0].dataIndex];
+    if (!row) return '';
+    return escapeText(row.name) + '<br/>本月 DPMU: ' + number(row.dpmu)
+      + '<br/>' + escapeText(row.previous_month) + ' DPMU: ' + number(row.previous_dpmu)
+      + '<br/>环比: ' + (row.change_percent == null ? '—' : number(row.change_percent, 2) + '%');
+  };
+  return option;
+}
+
+function weavingDailyOpt(rows) {
+  var option = lineOpt('每日DPMU趋势', rows.map(function(row) { return row.name; }),
+    rows.map(function(row) { return row.dpmu; }), null, '#409cff');
+  option.series[0].smooth = false;
+  delete option.series[0].areaStyle;
+  if (rows.length > 20) {
+    option.dataZoom = [{ type: 'inside' }, { type: 'slider', height: 14, bottom: 0 }];
+    option.grid.bottom = 44;
+  }
+  return option;
+}
+
+function weavingProductsOpt(rows) {
+  var option = barOpt('各带型DPMU', rows.map(function(row) { return row.name; }),
+    rows.map(function(row) { return row.dpmu; }), '#34d97e');
+  option.tooltip.formatter = function(params) {
+    if (!Array.isArray(params) || !params.length) return '';
+    var row = rows[params[0].dataIndex];
+    if (!row) return '';
+    return escapeText(row.name) + '<br/>DPMU: ' + number(row.dpmu)
+      + '<br/>报废米数: ' + number(row.scrap, 6) + ' 米'
+      + '<br/>带型产量: ' + number(row.production, 6) + ' 米';
+  };
+  if (rows.length > 8) {
+    option.dataZoom = [{ type: 'inside' }, { type: 'slider', height: 14, bottom: 0, startValue: 0, endValue: 7 }];
+    option.grid.bottom = 56;
+  }
+  return option;
+}
+
 function renderCharts(message) {
   disposeCharts();
+  var weaving = currentTab === 'weaving';
+  var weavingOrder = { chart5: 0, chart2: 1, chart3: 2, chart4: 3, chart8: 4 };
+  page.querySelectorAll('#chartGrid > .card').forEach(function(card) {
+    var id = card.querySelector('.chart-container').id;
+    card.hidden = weaving && weavingOrder[id] == null;
+    card.style.order = weaving && weavingOrder[id] != null ? String(weavingOrder[id]) : '';
+  });
   if (!snapshot) {
     for (var index = 1; index <= 9; index++) {
-      initChart('chart' + index, { title: baseTitle(message || '待查询') });
+      if (weaving && weavingOrder['chart' + index] == null) continue;
+      initChart('chart' + index, weaving && index === 2 ? weavingGaugeOpt(null) : { title: baseTitle(message || '待查询') });
     }
     return;
   }
   var d = snapshot;
   var scope = { overview: '总览', weaving: '织造', dyeing: '染色' }[d.filters.tab];
-  function topDpmu(rows) {
+  function topDpmu(rows, count) {
     return rows.slice().sort(function(first, second) {
       if (first.dpmu == null) return second.dpmu == null ? 0 : 1;
       if (second.dpmu == null) return -1;
       return second.dpmu - first.dpmu;
-    }).slice(0, 10);
+    }).slice(0, count == null ? 10 : count);
+  }
+  function values(rows, key) { return rows.map(function(row) { return row[key]; }); }
+  if (weaving) {
+    var weavingDefects = topDpmu(d.weaving_defects);
+    var weavingOption = hbarOpt('疵点名称DPMU', values(weavingDefects, 'name'), values(weavingDefects, 'dpmu'), '#fac858');
+    weavingOption.series[0].data = weavingDefects.map(function(row) {
+      return { value: row.dpmu, scrap: row.scrap };
+    });
+    initChart('chart5', weavingOption);
+    initChart('chart2', weavingGaugeOpt(d.weaving_total.dpmu));
+    initChart('chart3', weavingMonthlyOpt(d.weaving_months));
+    initChart('chart4', weavingDailyOpt(d.weaving_days));
+    initChart('chart8', weavingProductsOpt(topDpmu(d.weaving_products, d.weaving_products.length)));
+    return;
   }
   var areas = d.areas.slice(0, 10);
   var lines = topDpmu(d.lines);
   var products = topDpmu(d.products);
   var categories = d.categories.slice(0, 10);
   var defects = topDpmu(d.defects);
-  function values(rows, key) { return rows.map(function(row) { return row[key]; }); }
   initChart('chart1', barOpt('各区域 DPMU', values(areas, 'name'), values(areas, 'dpmu'), '#409cff'));
   initChart('chart2', gaugeOpt(scope + ' DPMU TOTAL', d.total.dpmu, Math.max(0.1, (d.total.dpmu || 0) * 2)));
   initChart('chart3', lineOpt('各月 DPMU 趋势', values(d.months, 'name'), values(d.months, 'dpmu'), null, '#b28dff'));

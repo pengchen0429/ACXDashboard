@@ -4,7 +4,7 @@
 {% block title %}DPMU 质量监控大屏 - CNSX数据看板{% endblock %}
 
 {% block head_extra %}
-<link rel="stylesheet" href="{% static 'css/dpmu.css' %}?v=no-tabs-1">
+<link rel="stylesheet" href="{% static 'css/dpmu.css' %}?v=weaving-single-card-1">
 {% endblock %}
 
 {% block content %}
@@ -22,6 +22,12 @@
       <span class="live-dot"></span><span class="live-clock" id="liveClock">--:--:--</span><br>
       <span class="data-cutoff" id="dpmuStatus" role="status" aria-live="polite">待查询</span>
     </div>
+  </div>
+
+  <div class="tab-bar" role="group" aria-label="统计范围">
+    {% comment %} <button type="button" class="tab-btn active" data-tab="overview" aria-pressed="true">总览</button> {% endcomment %}
+    <button type="button" class="tab-btn active" data-tab="weaving" aria-pressed="true">织造</button>
+    {% comment %} <button type="button" class="tab-btn" data-tab="dyeing" aria-pressed="false">染色</button> {% endcomment %}
   </div>
 
   <!-- 筛选栏 -->
@@ -78,6 +84,8 @@
     <span id="dpmuFilterStatus" class="filter-status" role="status" aria-live="polite"></span>
   </div>
 
+  
+
   <!-- 图表网格 -->
   <div class="chart-grid" id="chartGrid">
     <!-- chart1 | 各区域 DPMU | 桌面第1行左侧：织造、染色对比 -->
@@ -100,7 +108,7 @@
     <div class="card"><div class="chart-container" id="chart9" data-chart="true"></div></div>
   </div>
 
-  <div class="footer-note">DPMU = 报废数量 ÷ 产量 × 1,000,000；WEAV 为织造，DYE 为染色；过程不合格报废各分一半；产量按 08:30 生产日归属；无产量时显示“—”。</div>
+  <div class="footer-note">DPMU = 报废数量 ÷ 产量 × 1,000,000；WEAV 为织造，DYE 为染色；过程不合格不计入统计；产量按 08:30 生产日归属；无产量时显示“—”。</div>
 </div>
 </div>
 {% endblock %}
@@ -108,5 +116,5 @@
 {% block extra_js %}
 <script src="{% static 'js/echarts.min.js' %}"></script>
 <script src="{% static 'js/light-theme.js' %}?v=1"></script>
-<script src="{% static 'js/dpmu.js' %}?v=dpmu-product-only-1"></script>
+<script src="{% static 'js/dpmu.js' %}?v=weaving-default-1"></script>
 {% endblock %}
