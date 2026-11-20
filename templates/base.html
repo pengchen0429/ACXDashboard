@@ -69,8 +69,9 @@
             <span class="nav-label">设备管理</span>
           </a>
           {% endif %}
-          {% if perms.accounts.view_dyecontrol %}
-          <a class="nav-item{% if request.resolver_match.url_name == 'dyecontrol' %} active{% endif %}" href="{% url 'dyecontrol' %}" data-page="dyecontrol"{% if request.resolver_match.url_name == 'dyecontrol' %} aria-current="page"{% endif %}>
+          {% url 'dyecontrol' as dyecontrol_url %}
+          {% if perms.accounts.view_dyecontrol and dyecontrol_url %}
+          <a class="nav-item{% if request.resolver_match.url_name == 'dyecontrol' %} active{% endif %}" href="{{ dyecontrol_url }}" data-page="dyecontrol"{% if request.resolver_match.url_name == 'dyecontrol' %} aria-current="page"{% endif %}>
             <span class="nav-icon">🎨</span>
             <span class="nav-label">染色控制</span>
           </a>
